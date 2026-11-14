@@ -1,0 +1,18 @@
+# prep, not student material
+CONTEXT.md
+prep/
+wjim_lib/workshop_port_prompt.md
+
+# python
+__pycache__/
+*.egg-info/
+.venv/
+.ruff_cache/
+.pytest_cache/
+
+# rhino / grasshopper backups
+*.ghbak
+*.3dmbak
+*.rhl
+
+.DS_Store

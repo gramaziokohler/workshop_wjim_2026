@@ -1,0 +1,37 @@
+{
+  "$schema": "./fixture.schema.json",
+  "beams": [
+    {
+      "centerline": [
+        [0.0, 0.0, 0.0],
+        [579.741, 0.0, 154.598]
+      ],
+      "width": 80.0,
+      "height": 160.0
+    },
+    {
+      "centerline": [
+        [0.0, 0.0, 0.0],
+        [0.0, 569.21, 189.737]
+      ],
+      "width": 80.0,
+      "height": 160.0
+    },
+    {
+      "centerline": [
+        [0.0, 0.0, -600.0],
+        [0.0, 0.0, 0.0]
+      ],
+      "width": 100.0,
+      "height": 100.0
+    }
+  ],
+  "role_bindings": {
+    "edge_a": 0,
+    "edge_b": 1,
+    "post": 2
+  },
+  "params": {
+    "depth": 20.0
+  }
+}
