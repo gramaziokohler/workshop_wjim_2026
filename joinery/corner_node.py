@@ -12,28 +12,28 @@ The beams, in the order the constructor takes them:
 
 What it does:
 
-- The post carries both edges. Its top is cut to the undersides of the two
-  edges, so they sit on it (a double cut, one plane per edge).
-- The edges cross over the post with a corner half-lap: each gives up half
-  its depth where the other passes, so neither sits on top of the other.
-  That part is an existing joint (`LLapJoint`), reused.
+- The post runs up past both edges, so each edge has a face of the post to
+  butt into.
+- Each edge butts into its face of the post with a step: a shallow notch in
+  the post (`StepJointNotch`) that the edge's end (`StepJoint`) sits in, so
+  the post carries the edge rather than a nail.
 """
 
 from __future__ import annotations
 
 from itertools import combinations
 
+from compas.geometry import Plane
 from compas.geometry import Point
 from compas.geometry import centroid_points
 from compas.geometry import intersection_line_line
 from compas_timber.connections import Joint
 from compas_timber.connections import JointTopology
 from compas_timber.connections.utilities import beam_ref_side_incidence
+from compas_timber.connections.utilities import beam_ref_side_incidence_with_vector
 from compas_timber.elements import Beam
-
-from compas.geometry import Plane
-from compas_timber.connections import LLapJoint
-from compas_timber.fabrication import DoubleCut
+from compas_timber.fabrication import StepJoint
+from compas_timber.fabrication import StepJointNotch
 
 import debug
 
@@ -49,8 +49,8 @@ class CornerNodeJoint(Joint):
         beam 2 (category 'edge'), ends here
     post
         beam 4 (category 'post'), ends here
-    depth
-        An example parameter - rename it, use it, or remove it.
+    step_depth
+        How deep each edge steps into the post.
     """
 
     SUPPORTED_TOPOLOGY = JointTopology.TOPO_Y
@@ -60,7 +60,7 @@ class CornerNodeJoint(Joint):
     @property
     def __data__(self) -> dict:
         data = super().__data__
-        data["depth"] = self.depth
+        data["step_depth"] = self.step_depth
         return data
 
     # Annotated parameters can be set from the Fixture's "params".
@@ -69,11 +69,11 @@ class CornerNodeJoint(Joint):
         edge_a: Beam | None = None,
         edge_b: Beam | None = None,
         post: Beam | None = None,
-        depth: float = 20.0,
+        step_depth: float = 15.0,
         **kwargs,
     ) -> None:
         super().__init__(elements=(edge_a, edge_b, post), **kwargs)
-        self.depth = depth
+        self.step_depth = step_depth
 
     @property
     def edge_a(self) -> Beam:
@@ -86,6 +86,10 @@ class CornerNodeJoint(Joint):
     @property
     def post(self) -> Beam:
         return self.elements[2]
+
+    @property
+    def edges(self) -> tuple[Beam, Beam]:
+        return self.edge_a, self.edge_b
 
     @property
     def location(self) -> Point:
@@ -104,29 +108,43 @@ class CornerNodeJoint(Joint):
         incidence = beam_ref_side_incidence(other, beam, ignore_ends=True)
         return min(incidence, key=incidence.get)
 
-    def add_extensions(self) -> None:
-        """The edges reach past the post to the outer corner, as the lap needs."""
-        self.lap.add_extensions()
+    def side_against(self, beam: Beam, vector) -> int:
+        """The index of `beam`'s reference side whose normal points most against `vector`."""
+        angles = beam_ref_side_incidence_with_vector(beam, vector, ignore_ends=True)
+        return max(angles, key=angles.get)
 
-    @property
-    def lap(self) -> LLapJoint:
-        """The two edges cross with a corner half-lap: an existing joint, reused."""
-        return LLapJoint(self.edge_a, self.edge_b, cut_plane_bias=0.5)
-
-    def underside(self, edge: Beam) -> Plane:
-        """The face of `edge` the post carries."""
-        face = edge.ref_sides[self.side_facing(edge, self.post)]
+    def top_of(self, edge: Beam) -> Plane:
+        """The upper face of `edge`: the one facing away from the post's foot."""
+        down = self.post.centerline.midpoint - self.location
+        face = edge.ref_sides[self.side_against(edge, down)]
         return Plane(face.point, face.normal)
 
-    def add_features(self) -> None:
-        """Lap the edges into each other, and cut the post to sit under both."""
-        lap = self.lap
-        lap.add_features()
-        self.features.extend(lap.features)
+    def add_extensions(self) -> None:
+        """The post reaches above both edges; each edge reaches through the post, for its step to be cut from."""
+        post_ends = [self.post.extension_to_plane(self.top_of(edge)) for edge in self.edges]
+        self.post.add_blank_extension(max(s for s, _ in post_ends), max(e for _, e in post_ends), self.guid)
+        for edge in self.edges:
+            far_face = self.post.opp_side(self.side_facing(self.post, edge))
+            edge.add_blank_extension(*edge.extension_to_plane(far_face), self.guid)
 
-        planes = [self.underside(self.edge_a), self.underside(self.edge_b)]
-        seat = DoubleCut.from_planes_and_beam(planes, self.post)
-        self.post.add_features(seat)
-        self.features.append(seat)
-        for plane in planes:
-            debug.show(plane, "underside")
+    def add_features(self) -> None:
+        """Step each edge into its face of the post."""
+        self.features = []
+        for role, edge in zip(("edge_a", "edge_b"), self.edges):
+            post_side = self.side_facing(self.post, edge)
+            post_face = self.post.ref_sides[post_side]
+            edge_side = self.side_against(edge, post_face.normal)
+            _, edge_height = edge.get_dimensions_relative_to_side(edge_side)
+            debug.show(post_face, f"post face for {role}")
+
+            step = StepJoint.from_plane_and_beam(post_face, edge, step_depth=self.step_depth, ref_side_index=edge_side)
+            notch = StepJointNotch.from_plane_and_beam(  # across the post's whole face
+                edge.ref_sides[edge_side],
+                self.post,
+                step_depth=self.step_depth,
+                strut_height=edge_height,
+                ref_side_index=post_side,
+            )
+            edge.add_features(step)
+            self.post.add_features(notch)
+            self.features.extend([step, notch])

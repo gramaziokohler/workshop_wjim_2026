@@ -31,6 +31,7 @@ Open `joinery.gh` (Rhino units: **millimetres**). The canvas reads left to right
 |---|---|
 | `joinery.gh` | the Grasshopper document |
 | `junction_lib.py` | finding junctions, exporting them, generating and loading joint modules |
+| `joint_module.py.template` | the joint module `junction_lib.py` writes for a newly exported junction |
 | `toolpath_lib.py` | toolpaths from BTLx processings (`python toolpath_lib.py` checks itself) |
 | `robot_lib.py` | the milling cell and the robot's inverse kinematics (`python robot_lib.py` checks itself) |
 | `robot/` | the ABB IRB2600-12/1.65 model |
