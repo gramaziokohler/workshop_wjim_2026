@@ -19,12 +19,10 @@ import math
 
 from compas.geometry import Frame
 from compas.geometry import Point
-from compas.geometry import Polyhedron
 from compas.geometry import Vector
 from compas_timber.fabrication import DoubleCut
 from compas_timber.fabrication import JackRafterCut
 from compas_timber.fabrication import Lap
-from compas_timber.fabrication import LapProxy
 
 BIT_DIAMETER = 6.0  # mm, the bit on site
 SAW_CUTS = (JackRafterCut, DoubleCut)
@@ -78,24 +76,7 @@ def toolpaths(beam, features=None, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe
 
 def _unproxified(feature):
     """The processing behind a proxy (joints add proxies; only the real thing has BTLx parameters)."""
-    if not hasattr(feature, "unproxified"):
-        return feature
-    try:
-        return feature.unproxified()
-    except AttributeError:
-        if not isinstance(feature, LapProxy):
-            raise
-        # shortcut: compas_timber@9a3e637 asks a Brep face for `.nurbssurface`, which compas_brep 0.1.4 lacks;
-        # the lap volume is rebuilt as a Polyhedron instead. Remove when compas_timber is bumped.
-        volume = feature.volume.transformed(feature.beam.modeltransformation)
-        vertices, faces = [], []
-        for face in volume.faces:
-            points = list(face.to_polygon().points)
-            if face.is_reversed:
-                points.reverse()
-            faces.append(list(range(len(vertices), len(vertices) + len(points))))
-            vertices.extend(points)
-        return Lap.from_volume_and_beam(Polyhedron(vertices, faces), feature.beam, feature.machining_limits, feature.ref_side_index)
+    return feature.unproxified() if hasattr(feature, "unproxified") else feature
 
 
 def lap_toolpath(beam, lap, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe_height=20.0):

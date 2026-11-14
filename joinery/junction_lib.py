@@ -26,6 +26,7 @@ import keyword
 import os
 import re
 import sys
+import types
 
 from compas.geometry import Point
 from compas.geometry import centroid_points
@@ -383,6 +384,16 @@ def joint_module_source(name, junction):
 _loaded = {}  # path -> (mtime, joint class)
 
 
+def _ensure_debug():
+    """Joint modules `import debug` (the joint editor's drawing channel). Outside the editor it only has to import."""
+    try:
+        import debug  # noqa: F401
+    except ImportError:
+        stub = types.ModuleType("debug")
+        stub.show = lambda geometry, label: None
+        sys.modules["debug"] = stub
+
+
 def load_joint_class(folder, name):
     """The `Joint` subclass defined in `<folder>/<name>.py`, re-read whenever the file changes."""
     path = os.path.join(folder, name + ".py")
@@ -393,6 +404,7 @@ def load_joint_class(folder, name):
     if cached and cached[0] == mtime:
         return cached[1]
 
+    _ensure_debug()
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
