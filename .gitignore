@@ -16,3 +16,6 @@ __pycache__/
 *.rhl
 
 .DS_Store
+
+# docs
+site/

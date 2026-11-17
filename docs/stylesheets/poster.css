@@ -1,0 +1,79 @@
+/* The poster's palette: oxblood ground (GKR_With-Joints-in-Mind_Oxblood poster), white linework, one neon per beam. */
+:root, [data-md-color-scheme="slate"] {
+  --wjim-ground: #19040b;
+  --wjim-ground-2: #520f22;
+  --wjim-ink: #f8ebe6;
+  --wjim-muted: #b39aa0;
+  --wjim-mauve: #8f6571;
+  --wjim-cyan: #4fd6e0;
+  --wjim-white: #f8ebe6;
+  --wjim-yellow: #ffc23d;
+  --wjim-magenta: #ff5fa8;
+
+  --md-default-bg-color: var(--wjim-ground);
+  --md-default-fg-color: var(--wjim-ink);
+  --md-default-fg-color--light: var(--wjim-muted);
+  --md-default-fg-color--lighter: var(--wjim-mauve);
+  --md-primary-fg-color: var(--wjim-ground-2);
+  --md-primary-bg-color: var(--wjim-ink);
+  --md-accent-fg-color: var(--wjim-cyan);
+  --md-typeset-color: var(--wjim-ink);
+  --md-typeset-a-color: var(--wjim-cyan);
+  --md-code-bg-color: #240a12;
+  --md-footer-bg-color: #100307;
+  --md-footer-bg-color--dark: #0a0205;
+}
+
+body { background: linear-gradient(170deg, var(--wjim-ground-2) 0, var(--wjim-ground) 40rem) no-repeat, var(--wjim-ground); }
+.md-header, .md-tabs { background: transparent; box-shadow: none; }
+.md-main, .md-container { background: transparent; }
+
+.md-typeset h1, .md-typeset h2 {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  color: var(--wjim-ink);
+}
+.md-typeset h2 { font-size: 1.1rem; margin-top: 2.2em; }
+.md-typeset h3 { color: var(--wjim-muted); font-family: var(--md-text-font-family); letter-spacing: .04em; font-weight: 700; }
+
+/* "STEP 03 / 07" above each title */
+.md-typeset .step {
+  font-family: var(--md-text-font-family);
+  font-weight: 700;
+  color: var(--wjim-mauve);
+  letter-spacing: .05em;
+  font-size: .8rem;
+  margin: 0;
+}
+
+.md-typeset img, .md-typeset svg.diagram { border-radius: 2px; }
+.md-typeset figure { margin: 1.5em auto; }
+.md-typeset figcaption { color: var(--wjim-muted); font-family: var(--md-text-font-family); font-size: .65rem; max-width: none; }
+
+/* A screenshot still to take: where it goes, and what it shows. */
+.md-typeset .shot-todo {
+  border: 1.5px dashed var(--wjim-mauve);
+  color: var(--wjim-muted);
+  font-family: var(--md-text-font-family);
+  font-size: .7rem;
+  padding: 2.5em 1em;
+  text-align: center;
+  margin: 1.5em 0;
+}
+.md-typeset .shot-todo::before { content: "📷 screenshot · "; color: var(--wjim-yellow); }
+
+/* Hero on the overview page */
+.md-typeset .hero { display: grid; grid-template-columns: 1fr 1.2fr; gap: 2rem; align-items: center; }
+.md-typeset .hero img { width: 100%; }
+.md-typeset .hero .date { font-family: var(--md-text-font-family); color: var(--wjim-mauve); font-weight: 700; font-size: 1.2rem; margin: 0; }
+.md-typeset .hero h1 { font-size: 2.4rem; line-height: 1.1; margin: .3em 0; }
+@media (max-width: 45em) { .md-typeset .hero { grid-template-columns: 1fr; } }
+
+/* Step cards: one neon edge each, like the poster's beams */
+.md-typeset .grid.cards > ul > li { border: 1px solid #4a2530; background: #1d0710; }
+.md-typeset .grid.cards > ul > li:hover { border-color: var(--wjim-cyan); box-shadow: none; }
+
+.md-typeset .admonition, .md-typeset details { background: #1d0710; border-width: 0 0 0 2px; box-shadow: none; }
+.md-typeset kbd { background: var(--wjim-ground-2); color: var(--wjim-ink); box-shadow: none; }
+.md-nav__link--active, .md-nav__item .md-nav__link--active, .md-nav__link:hover { color: var(--wjim-cyan) !important; }

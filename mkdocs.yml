@@ -1,0 +1,45 @@
+# Preview: uvx --with mkdocs-material mkdocs serve
+site_name: With Joints in Mind
+site_description: NCYU workshop, 23-27.11.2026 - from a timber structure to a robot-milled joint.
+copyright: Gramazio Kohler Research, ETH Zürich · National Chiayi University, Taiwan
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+  font:
+    text: Barlow
+    code: Roboto Mono
+  features:
+    - navigation.footer
+    - navigation.top
+    - content.code.annotate
+    - content.code.copy
+
+extra_css:
+  - stylesheets/poster.css
+
+nav:
+  - Overview: index.md
+  - 01 · Install: 01-install.md
+  - 02 · Timber model: 02-model.md
+  - 03 · Pick a junction: 03-junction.md
+  - 04 · Write the joint: 04-joint-editor.md
+  - 05 · Back to Grasshopper: 05-back.md
+  - 06 · Parameterize: 06-parameterize.md
+  - 07 · Toolpaths: 07-toolpaths.md
+
+markdown_extensions:
+  - attr_list
+  - md_in_html
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg

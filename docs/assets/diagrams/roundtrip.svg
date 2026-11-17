@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 420" font-family="DIN Alternate, Barlow, Helvetica Neue, Arial, sans-serif">
+  <defs>
+    <marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#ff5fa8"/></marker>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#f8ebe6"/></marker>
+    <marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#ffc23d"/></marker>
+  </defs>
+  <style>
+    .t { fill: #f8ebe6; font-weight: 700; font-size: 15px; letter-spacing: .06em; }
+    .s { fill: #b39aa0; font-size: 12px; }
+    .n { font-weight: 700; font-size: 13px; }
+    .box { fill: #1d0710; stroke-width: 1.4; }
+  </style>
+
+  <!-- Grasshopper -->
+  <rect class="box" x="30" y="130" width="250" height="160" stroke="#f8ebe6"/>
+  <text class="t" x="50" y="165">RHINO · GRASSHOPPER</text>
+  <text class="s" x="50" y="188">joinery.gh</text>
+  <text class="s" x="50" y="220">decides WHERE:</text>
+  <text class="s" x="50" y="238">beams, rules, junctions</text>
+  <text class="n" x="50" y="272" fill="#8f6571">01 install · 02 model</text>
+
+  <!-- Joint editor -->
+  <rect class="box" x="520" y="30" width="250" height="160" stroke="#4fd6e0"/>
+  <text class="t" x="540" y="65">VS CODE · JOINT EDITOR</text>
+  <text class="s" x="540" y="88">corner_node.py</text>
+  <text class="s" x="540" y="120">decides HOW:</text>
+  <text class="s" x="540" y="138">cuts, as BTLx processings</text>
+  <text class="n" x="540" y="172" fill="#4fd6e0">04 write · 06 parameterize</text>
+
+  <!-- Robot -->
+  <rect class="box" x="520" y="270" width="250" height="120" stroke="#ffc23d"/>
+  <text class="t" x="540" y="305">ROBOT · IRB2600</text>
+  <text class="s" x="540" y="328">6 mm milling bit</text>
+  <text class="s" x="540" y="346">one beam, one side per setup</text>
+
+  <!-- arrows -->
+  <path d="M280 165 C 380 120, 420 95, 515 95" fill="none" stroke="#ff5fa8" stroke-width="1.6" marker-end="url(#m)"/>
+  <text class="n" x="340" y="80" fill="#ff5fa8">03 export junction</text>
+  <path d="M520 150 C 430 160, 380 200, 285 215" fill="none" stroke="#f8ebe6" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#g)"/>
+  <text class="n" x="350" y="225" fill="#f8ebe6">05 save = update</text>
+  <path d="M280 270 C 380 320, 420 330, 515 330" fill="none" stroke="#ffc23d" stroke-width="1.6" marker-end="url(#y)"/>
+  <text class="n" x="335" y="350" fill="#ffc23d">07 toolpaths</text>
+</svg>
