@@ -24,13 +24,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "joinery"))
 
 import compas_timber.fabrication as ctf  # noqa: E402
+import numpy as np  # noqa: E402
 import wjim_lib  # noqa: E402
 from compas.geometry import Line  # noqa: E402
 from compas.geometry import Point  # noqa: E402
 from compas.geometry import Polyline  # noqa: E402
 from compas.geometry import Scale  # noqa: E402
 from compas.geometry import Transformation  # noqa: E402
-from compas_robots import Configuration  # noqa: E402
 from compas_timber.elements import Beam  # noqa: E402
 from compas_timber.fabrication import BirdsMouth  # noqa: E402
 from compas_timber.fabrication import BTLxProcessing  # noqa: E402
@@ -44,8 +44,10 @@ from compas_timber.fabrication import StepJointNotch  # noqa: E402
 from compas_timber.fabrication import OrientationType  # noqa: E402
 from compas_timber.fabrication import StepShapeType  # noqa: E402
 from compas_timber.fabrication import Tenon  # noqa: E402
+from robot_lib import HOME  # noqa: E402
 from robot_lib import MM_PER_M  # noqa: E402
 from robot_lib import MillingCell  # noqa: E402
+from robot_lib import _robot  # noqa: E402
 from toolpath_lib import toolpaths  # noqa: E402
 from wjim_lib import Chamfer  # noqa: E402
 from wjim_lib import HouseMortise  # noqa: E402
@@ -193,21 +195,11 @@ def catalog():
     return result
 
 
-def _matrix(transformation):
-    """Column-major, as three.js `Matrix4.fromArray` reads it."""
-    return [round(transformation.matrix[r][c], 4) for c in range(4) for r in range(4)]
-
-
 def _mesh(mesh, transformation=None):
     if transformation is not None:
         mesh = mesh.transformed(transformation)
     vertices, faces = mesh.to_vertices_and_faces(triangulated=True)
     return {"vertices": [round(x, 3) for v in vertices for x in v], "faces": [i for f in faces for i in f]}
-
-
-def _in_mm(transformation):
-    s = Scale.from_factors([MM_PER_M] * 3)
-    return s * transformation * s.inverse()
 
 
 def robot():
@@ -266,26 +258,49 @@ def _setup(beam, mesh, polylines, paths, side):
     except Exception as e:
         result["plan_error"] = f"{type(e).__name__}: {e}"
         return result
-    model = CELL.robot
-    joints = model.get_configurable_joint_names()
-    base = Transformation.from_frame(CELL.robot_frame)
-    unbase = base.inverse()  # the link meshes are already placed in the cell
-    names = [link["name"] for link in robot_links()]
-    by_link = {j.child_link.name: j.name for j in model.iter_joints()}
+    # Every link's frame from one native call per point: compas_robots' FK and CELL.tool0/tool_tip are pure
+    # Python (and deep-copy the cell state), ~1 ms per point, 90% of a run.
+    core = _robot().planner.client.core
+    index = [core.link_names.index(link["name"]) for link in robot_links()]
+    zero = _frames(core, [0.0] * core.dof)
+    unzero = np.linalg.inv(zero[index])  # the link meshes are already placed at zero
+    base = np.array(Transformation.from_frame(CELL.robot_frame).matrix)
+    unbase = np.linalg.inv(base)
+    tcf = np.linalg.inv(np.array(Transformation.from_frame(CELL.tool0(HOME)).matrix)) @ np.array(Transformation.from_frame(CELL.tool_tip(HOME)).matrix)  # flange to tip
     points = []
     for q in trajectory:
-        transformations = model.compute_transformations(Configuration.from_revolute_values(q, joints))
-        flange = Transformation.from_frame(CELL.tool0(q))
+        frames = _mm(_frames(core, q))
+        links = base @ frames[index] @ _mm(unzero) @ unbase
+        flange = base @ frames[core.end_effector_link]
         points.append(
             {
                 "q": [round(v, 5) for v in q],
-                "links": [_matrix(base * _in_mm(transformations[by_link[n]]) * unbase) if n in by_link else None for n in names],
-                "tool": _matrix(flange),
-                "tip": [round(x, 3) for x in CELL.tool_tip(q).point],
+                "links": [_column_major(m) for m in links],
+                "tool": _column_major(flange),
+                "tip": (flange @ tcf)[:3, 3].round(3).tolist(),
             }
         )
     result["trajectory"] = points
     return result
+
+
+def _frames(core, q):
+    """Every link's frame in the robot's base (m), as 4x4s."""
+    frames = np.zeros((len(core.link_names), 4, 4))
+    frames[:, :3, :] = np.array(core.link_frames(list(q))).reshape(-1, 3, 4)
+    frames[:, 3, 3] = 1.0
+    return frames
+
+
+def _mm(matrices):
+    matrices = matrices.copy()
+    matrices[..., :3, 3] *= MM_PER_M
+    return matrices
+
+
+def _column_major(matrix):
+    """As three.js `Matrix4.fromArray` reads it."""
+    return matrix.T.reshape(-1).round(4).tolist()
 
 
 _ROBOT = None
