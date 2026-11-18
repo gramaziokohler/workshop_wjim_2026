@@ -22,11 +22,13 @@ from types import SimpleNamespace
 
 import compas
 from compas.geometry import Frame
+from compas.geometry import Plane
 from compas.geometry import Point
 from compas.geometry import Transformation
 from compas.geometry import Vector
 from compas_fab.backends.exceptions import InverseKinematicsError
 from compas_fab.robots import FrameTarget
+from compas_fab.robots import PointAxisWaypoints
 from compas_fab.robots import RobotCell
 from compas_fab.robots import RobotSemantics
 from compas_fab.robots import TargetMode
@@ -46,6 +48,7 @@ ROBOT_FRAME = Frame(Point(0, -3000, 0), Vector(1, 0, 0), Vector(0, 1, 0))
 TABLE_FRAME = Frame(Point(1100, -3000, 400), Vector(1, 0, 0), Vector(0, 1, 0))
 
 MM_PER_M = 1000.0
+BLANK_MARGIN = 50.0  # mm of the beam left before what's milled, where the blank is cut
 
 
 def _to_metres(frame):
@@ -125,16 +128,24 @@ class MillingCell:
         """The transformation that clamps `beam` with side `ref_side_index` up and that side's reference corner on the table frame."""
         return Transformation.from_frame_to_frame(beam.ref_sides[ref_side_index], self.table_frame)
 
-    def setup(self, beam, toolpaths, side_index=None):
-        """Clamp `beam` with side `side_index` up, that side's reference corner on the table frame.
+    def setup(self, beam, toolpaths, side_index=None, blank_length=None, near=None):
+        """Clamp `beam` with side `side_index` up, on the table frame.
 
         Without a `side_index`, the side the first milled toolpath comes from goes up.
+
+        Without a `blank_length`, the whole beam goes on the table, that side's reference corner on its origin.
+        With one, only a blank that long is milled: the part of the beam around what's milled (and `near`,
+        a point such as the junction's location, so there is a blank before there are toolpaths). The blank
+        starts `BLANK_MARGIN` before it, from the beam end it is closer to, and keeps that end if it reaches it.
+        That end goes on the table's origin, the beam turned end for end if need be, so what's milled is close to
+        the robot; the rest of the beam is cut away.
 
         Returns
         -------
         tuple
-            The beam's placement (a Transformation), the tool frames of this setup
-            in the cell, and the toolpaths that need the beam turned to another side.
+            The beam's placement (a Transformation), the tool frames of this setup in the cell, the toolpaths that need the
+            beam turned to another side, and the blank: `start` and `end` along the beam, `cuts` (Planes in the cell, each
+            facing a part that is cut away) and `note`.
         """
         milled = [t for t in toolpaths if t.frames]
         if side_index is None:
@@ -143,8 +154,40 @@ class MillingCell:
         on_this_side = [t for t in milled if t.ref_side_index == side_index]
         on_other_sides = [t for t in milled if t.ref_side_index != side_index]
         frames = [f for t in on_this_side for f in t.frames]
-        placement = self.placement(beam, side_index)
-        return placement, [f.transformed(placement) for f in frames], on_other_sides
+        side = beam.ref_sides[side_index]
+        full = beam.blank_length
+        if blank_length is None:
+            blank = SimpleNamespace(start=0.0, end=full, cuts=[], note="the whole beam, {:.0f} mm".format(full))
+            placement = self.placement(beam, side_index)
+            return placement, [f.transformed(placement) for f in frames], on_other_sides, blank
+
+        along = [side.to_local_coordinates(f.point)[0] for f in frames] + ([side.to_local_coordinates(near)[0]] if near is not None else [])
+        first, last = (min(along), max(along)) if along else (0.0, 0.0)
+        flipped = (first + last) / 2 > full / 2  # what's milled is closer to the beam's end than to its start
+        stub = max(beam.width, beam.height)  # an end closer than this to the cut holds the joint's own end cuts: keep it
+        if flipped:
+            end = full if full - (last + BLANK_MARGIN) < stub else last + BLANK_MARGIN
+            start = max(0.0, end - blank_length)
+        else:
+            start = 0.0 if first - BLANK_MARGIN < stub else first - BLANK_MARGIN
+            end = min(full, start + blank_length)
+        note = "blank {:.0f} mm, from {:.0f} to {:.0f} along the beam".format(end - start, start, end)
+        if first - start < -1e-6 or last - end > 1e-6:
+            note += ", TOO SHORT: what's milled runs from {:.0f} to {:.0f}".format(first, last)
+
+        width = beam.get_dimensions_relative_to_side(side_index)[0]
+        if flipped:
+            on_origin = Frame(side.point + side.xaxis * end + side.yaxis * width, -side.xaxis, -side.yaxis)
+        else:
+            on_origin = Frame(side.point + side.xaxis * start, side.xaxis, side.yaxis)
+        placement = Transformation.from_frame_to_frame(on_origin, self.table_frame)
+        cuts = []
+        if start > 1e-6:
+            cuts.append(Plane(side.point + side.xaxis * start, -side.xaxis).transformed(placement))
+        if end < full - 1e-6:
+            cuts.append(Plane(side.point + side.xaxis * end, side.xaxis).transformed(placement))
+        blank = SimpleNamespace(start=start, end=end, cuts=cuts, note=note)
+        return placement, [f.transformed(placement) for f in frames], on_other_sides, blank
 
     def flange_frame(self, tool_frame):
         """The flange (`tool0`) frame that puts the bit's tip on `tool_frame`."""
@@ -167,6 +210,28 @@ class MillingCell:
             configurations.append(previous)
         return configurations
 
+    def plan(self, tool_frames, max_step=10.0):
+        """A Cartesian trajectory through `tool_frames` by compas_fab_native: the bit's tip in straight
+        lines between them, `max_step` mm apart at most, free to turn about its own axis.
+
+        Returns
+        -------
+        list[list[float]]
+            Joint values (radians), one per interpolated frame.
+
+        Raises
+        ------
+        CartesianMotionError
+            If no collision-free path follows the frames.
+        """
+        robot = _robot()
+        waypoints = PointAxisWaypoints(
+            [(f.point.scaled(1 / MM_PER_M), f.zaxis) for f in (self.robot_frame.to_local_coordinates(f) for f in tool_frames)],
+            TargetMode.TOOL,
+        )
+        trajectory = robot.planner.plan_cartesian_motion(waypoints, robot.state, options={"max_step": max_step / MM_PER_M})
+        return [list(point.joint_values) for point in trajectory.points]
+
     def _inverse_kinematics(self, tool_frame):
         """Every joint configuration that puts the bit's tip on `tool_frame`."""
         robot = _robot()
@@ -178,6 +243,19 @@ class MillingCell:
             return [q.joint_values for q in robot.planner.iter_inverse_kinematics(target, robot.state)]
         except InverseKinematicsError:
             return []
+
+    def program(self, tool_frames, configurations):
+        """What `robot/send.py` sends to the robot: the flange (`tool0`) frames in the robot's base frame (mm), and the first configuration (degrees).
+
+        The flange rather than the bit's tip, so the robot runs the tool we simulated, whatever tool data the controller holds.
+        The first move is to the solved configuration, which fixes the arm's IK branch for the linear moves after it.
+        """
+        if not tool_frames or len(configurations) != len(tool_frames) or any(q is None for q in configurations):
+            raise ValueError("Every frame needs a solved configuration: solve the toolpath, and fix the frames out of reach first.")
+        return {
+            "start_joints": [math.degrees(v) for v in configurations[0]],
+            "frames": [self.robot_frame.to_local_coordinates(self.flange_frame(f)) for f in tool_frames],
+        }
 
     def configuration(self, joint_values):
         """The compas_robots Configuration of `joint_values`."""
@@ -246,9 +324,25 @@ if __name__ == "__main__":
 
     beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(1000, 0, 0)), width=80, height=160)
     for side_index in range(4):
-        placement, _, _ = measured.setup(beam, [], side_index)
+        placement, _, _, _ = measured.setup(beam, [], side_index)
         corner = beam.ref_sides[side_index].transformed(placement)
         assert corner.point.distance_to_point(measured.table_frame.point) < 1e-6 and corner.normal.dot(measured.table_frame.normal) > 1 - 1e-9
+
+    # Self-check: a blank of a long beam has its end nearest the joint on the table's origin, the joint within reach and
+    # the right way round, and every cut facing away from it.
+    long_beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(3000, 0, 0)), width=80, height=120)
+    top = long_beam.ref_sides[0]
+    for x, kept_end in ((0.0, True), (100.0, True), (1200.0, False), (2900.0, True)):
+        tips = [Frame(top.point + top.xaxis * (x + dx) + top.yaxis * 20 - top.normal * 10, top.xaxis, -top.yaxis) for dx in (0.0, 100.0)]
+        toolpath = SimpleNamespace(frames=tips, ref_side_index=0)
+        _, frames, _, blank = measured.setup(long_beam, [toolpath], blank_length=600, near=tips[0].point)
+        assert abs(blank.end - blank.start - 600) < 1e-6 and len(blank.cuts) == (1 if kept_end else 2), blank.note
+        on_table = [measured.table_frame.to_local_coordinates(f.point) for f in frames]
+        assert (blank.start == 0.0 or blank.end == 3000.0) == kept_end, (x, blank.note)
+        assert kept_end or min(p[0] for p in on_table) == BLANK_MARGIN, (x, on_table)
+        assert all(0 <= p[0] <= 600 and abs(p[1] - (60 if x > 1500 else 20)) < 1e-6 and abs(p[2] + 10) < 1e-6 for p in on_table), (x, on_table)
+        assert all((f.point - cut.point).dot(cut.normal) < 0 for f in frames for cut in blank.cuts)
+        assert None not in measured.solve(frames), x
 
     # Self-check: solving a tip frame the robot reaches gives a configuration that puts the tip there.
     cell = MillingCell()
@@ -266,5 +360,9 @@ if __name__ == "__main__":
         )
         assert cell.flange_frame(tip).point.distance_to_point(cell.tool0(solution).point) < 1e-3, (q, solution)
         solved += 1
+        # ...and the program sends the flange there, in the robot's base frame.
+        program = cell.program([tip], [solution])
+        flange = cell.robot_frame.to_world_coordinates(program["frames"][0])
+        assert flange.point.distance_to_point(cell.tool0(solution).point) < 1e-3
     assert solved > 50, solved
     print(f"IK puts the bit's tip on the target ({solved} of 100 random poses collision-free).")

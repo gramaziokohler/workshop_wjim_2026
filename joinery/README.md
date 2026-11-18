@@ -22,6 +22,18 @@ Open `joinery.gh` (Rhino units: **millimetres**). The canvas reads left to right
    clamped on the table, and the IRB2600 following them (`t` scrubs). Nothing
    is computed until you press `compute`, so picking junctions stays instant;
    until you press it, the last path stays, grey.
+   `blank` (mm) mills a piece that long instead of the whole beam: the part around the
+   junction, its end nearest the junction on the table's origin (the beam turned end for end
+   if need be). The parts that are cut away are drawn in `offcut`. The toolpaths don't change,
+   only where the beam sits.
+
+9. **To the robot**: write the solved path to a program (`MillingCell.program()`), then send it
+   from a terminal, outside Rhino:
+   ```bash
+   docker compose -f robot/docker-compose.yml up -d   # the RRC driver; ROBOT_IP=<ip> for RobotStudio
+   uv run send_to_robot.py program.json --dry-run     # check it, then without --dry-run
+   ```
+   The robot runs `tool0` in `wobj0`: the program holds the flange frames of the tool we simulate.
 
 `corner_node.py` is a worked example: the joint for the four corners.
 
@@ -34,26 +46,28 @@ Open `joinery.gh` (Rhino units: **millimetres**). The canvas reads left to right
 | `joint_module.py.template` | the joint module `junction_lib.py` writes for a newly exported junction |
 | `toolpath_lib.py` | toolpaths from BTLx processings (`python toolpath_lib.py` checks itself) |
 | `robot_lib.py` | the milling cell and the robot's inverse kinematics (`python robot_lib.py` checks itself) |
-| `robot/` | the ABB IRB2600-12/1.65 model |
+| `send_to_robot.py` | sends a program to the robot over COMPAS RRC (`uv run`, needs nothing installed) |
+| `robot/` | the ABB IRB2600-12/1.65 model, and the RRC driver (`docker-compose.yml`) |
 
 ## Setup
 
 Rhino 8, with the COMPAS Timber Grasshopper components installed from the Package Manager.
 
-Rhino's Python needs the same `compas_timber` the joint editor uses. With Rhino closed:
+Open `00_install.ghx` (repo root) once. It builds the `wjim_ncyu2026` environment every
+workshop component runs in, and links `wjim_lib` into it from this repo, so a `git pull`
+updates it (restart Rhino to pick up changes). Move the repo, and open `00_install.ghx` again.
 
-```bash
-# macOS
-~/.rhinocode/py39-rh8/python3.9 -m pip install --no-deps --target ~/.rhinocode/py39-rh8/site-envs/default-* -r requirements-rhino.txt
-~/.rhinocode/py39-rh8/python3.9 -m pip install --no-deps --ignore-requires-python --target ~/.rhinocode/py39-rh8/site-envs/default-* <joint_editor>/packages/joint-editor-debug
-```
-
-On Windows the interpreter is `%USERPROFILE%\.rhinocode\py39-rh8\python.exe` and
-the target is the `default-...` folder in `%USERPROFILE%\.rhinocode\py39-rh8\site-envs\`.
+The joint editor finds `wjim_lib` through `jointEditor.extraPaths` in `.vscode/settings.json`,
+so open the repo root as the VS Code folder.
 
 ## Limits, for now
 
 - Beams keep their default orientation (`z_vector` empty): the Fixture can't carry it yet.
-- Toolpaths exist for `Lap` only. Cuts are listed as saw cuts, everything else as "no toolpath yet".
+- Toolpaths exist for `Lap`, `StepJointNotch`, `Pocket`, `Mortise`, `HouseMortise`, `Drilling`, `Marking`, `Chamfer`
+  and `Tenon` (two setups: half from the top, half with the beam flipped) (see `toolpath_lib.py`).
+  Cuts are listed as saw cuts, everything else as "no toolpath yet". Inside corners stay round (3 mm),
+  and an undercut is left standing, the note says so.
+  `../processing_lab` is a small web page to try them out on a beam, with the robot.
+- Without a `blank`, the whole beam goes on the table, and what is more than ~500 mm along it is out of reach.
 - One setup per beam: processings on another side are listed, not solved.
 - Junction numbers follow the design. Change the design a lot, and check the `assign` lines.
