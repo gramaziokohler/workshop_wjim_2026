@@ -4,7 +4,7 @@ A helper for writing toolpaths, not workshop material. The toolpaths come from
 `joinery/toolpath_lib.py`, the robot, its spindle and the planning from
 `joinery/robot_lib.py`: what you see here is what Grasshopper gets.
 
-    uv run --project processing_lab processing_lab/server.py
+    uv run processing_lab/server.py   # from the repo root
     open http://localhost:8000
 
 To support another processing: write its toolpath in `toolpath_lib.py`, then

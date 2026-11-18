@@ -1,7 +1,7 @@
 [project]
-name = "processing_lab"
+name = "workshop_wjim_2026"
 version = "0.0.0"
-description = "Local helper: pick a processing, see its toolpaths and the IRB2600 following them."
+description = "One environment for the tutorial site and the processing lab (not the Rhino venv, that is 00_install.ghx)."
 requires-python = ">=3.10,<3.13"
 dependencies = [
     "compas_timber==3.0.0",
@@ -12,9 +12,13 @@ dependencies = [
     "wjim_lib",
 ]
 
+[dependency-groups]
+docs = ["mkdocs-material"]
+
 [tool.uv]
 package = false
+default-groups = ["docs"]
 environments = ["sys_platform == 'darwin'", "sys_platform == 'win32'"]
 
 [tool.uv.sources]
-wjim_lib = { path = "../wjim_lib", editable = true }
+wjim_lib = { path = "wjim_lib", editable = true }
