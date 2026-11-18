@@ -4,6 +4,7 @@ version = "0.0.0"
 description = "One environment for the tutorial site and the processing lab (not the Rhino venv, that is 00_install.ghx)."
 requires-python = ">=3.10,<3.13"
 dependencies = [
+    "compas==2.15.1",  # shortcut: compas 2.16 breaks compas_timber 3.0.0 (closed polylines); lift with the release of compas_timber's compas_216 branch
     "compas_timber==3.0.0",
     "compas_brep[occ]==0.4.2",
     "compas_fab",

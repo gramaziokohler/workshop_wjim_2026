@@ -278,7 +278,7 @@ wheels = [
 
 [[package]]
 name = "compas"
-version = "2.16.0"
+version = "2.15.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jsonschema", marker = "sys_platform == 'darwin' or sys_platform == 'win32'" },
@@ -294,9 +294,9 @@ dependencies = [
     { name = "watchdog", version = "6.0.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and sys_platform == 'darwin') or (python_full_version < '3.11' and sys_platform == 'win32')" },
     { name = "watchdog", version = "7.1.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and sys_platform == 'darwin') or (python_full_version >= '3.11' and sys_platform == 'win32')" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/96/84/a475cac4dd0fde0fdd6d14fcc89a358d5791a7b7f31f7b823c2ebbe2c65e/compas-2.16.0.tar.gz", hash = "sha256:5cf153bb04e9338e7a81723ac3ba4c746c2d40bf2d34a98417853ea5b7281b80", size = 2237877, upload-time = "2026-11-17T23:19:12.023Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/98/4d/f9de336ce5d38a0d1ec2cdfde62dbe800dca7de10c0dc7c9a05762535739/compas-2.15.1.tar.gz", hash = "sha256:57ad5aaa1dc33333fc3938ac53623b45ecbd0dce3704a9658986227c30fe085c", size = 2240329, upload-time = "2026-03-19T17:47:33.068Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b1/39/d831f47e83dd6b5d7552aee3956bd9cab4d5cd28452bfda62dbbdbfe813d/compas-2.16.0-py3-none-any.whl", hash = "sha256:f331c7581e83024fc3358786d4917ac24df1c41552ed4997599787f76cb5f5fc", size = 2454610, upload-time = "2026-11-17T23:19:10.264Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/c8/ed36552110760981d25f1bd48778b5451267cb4eb9dda652c32813fd2c84/compas-2.15.1-py3-none-any.whl", hash = "sha256:509ab436da7fc185b66436d5a1044ab94c932e9d9ca569cb5fe225f32f4493b2", size = 2458244, upload-time = "2026-03-19T17:47:31.238Z" },
 ]
 
 [[package]]
@@ -1386,6 +1386,7 @@ name = "workshop-wjim-2026"
 version = "0.0.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "compas", marker = "sys_platform == 'darwin' or sys_platform == 'win32'" },
     { name = "compas-brep", extra = ["occ"], marker = "sys_platform == 'darwin' or sys_platform == 'win32'" },
     { name = "compas-fab", marker = "sys_platform == 'darwin' or sys_platform == 'win32'" },
     { name = "compas-fab-native", marker = "sys_platform == 'darwin' or sys_platform == 'win32'" },
@@ -1402,6 +1403,7 @@ docs = [
 
 [package.metadata]
 requires-dist = [
+    { name = "compas", specifier = "==2.15.1" },
     { name = "compas-brep", extras = ["occ"], specifier = "==0.4.2" },
     { name = "compas-fab" },
     { name = "compas-fab-native" },
