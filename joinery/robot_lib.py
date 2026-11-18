@@ -43,9 +43,9 @@ SRDF = os.path.join(ROBOT_FOLDER, "abb_irb2600_12_165.srdf")
 TOOL = os.path.join(ROBOT_FOLDER, "milling_tool.json")
 HOME = [0.0, 0.0, 0.0, 0.0, math.pi / 2, 0.0]
 
-# The cell stands next to the design (y = -3000) rather than inside it.
-ROBOT_FRAME = Frame(Point(0, -3000, 0), Vector(1, 0, 0), Vector(0, 1, 0))
-TABLE_FRAME = Frame(Point(800, -3000, 400), Vector(1, 0, 0), Vector(0, 1, 0))
+# The cell stands next to the design (y = -3000) rather than inside it, the robot on a 500 mm pedestal.
+ROBOT_FRAME = Frame(Point(0, -3000, 500), Vector(1, 0, 0), Vector(0, 1, 0))
+TABLE_FRAME = Frame(Point(300, -3000, 400), Vector(1, 0, 0), Vector(0, 1, 0))
 
 MM_PER_M = 1000.0
 BLANK_MARGIN = 50.0  # mm of the beam left before what's milled, where the blank is cut
@@ -328,12 +328,12 @@ if __name__ == "__main__":
     assert frame_along(path, 0.0)[0].point == path[0].point and frame_along(path, 1.0)[0].point == path[-1].point
 
     # Self-check: the table frame from three measured points.
-    a, b, c = Point(800, 0, 400), Point(900, 0, 400), Point(800, 100, 400)
+    a, b, c = Point(300, 0, -100), Point(400, 0, -100), Point(300, 100, -100)
     measured = MillingCell.from_measured_points(a, b, c)
     assert measured.table_frame.point == TABLE_FRAME.point and measured.table_frame.xaxis == TABLE_FRAME.xaxis
     moved = MillingCell.from_measured_points(a, b, c, robot_frame=Frame(Point(10, 20, 0), Vector(0, 1, 0), Vector(-1, 0, 0)))
-    assert moved.table_frame.point.distance_to_point(Point(10, 820, 400)) < 1e-9
-    sloppy = MillingCell.from_measured_points(a, b, Point(805, 100, 401)).table_frame
+    assert moved.table_frame.point.distance_to_point(Point(10, 320, -100)) < 1e-9
+    sloppy = MillingCell.from_measured_points(a, b, Point(305, 100, -99)).table_frame
     assert abs(sloppy.xaxis.dot(sloppy.yaxis)) < 1e-9 and sloppy.xaxis.dot(Vector(1, 0, 0)) > 1 - 1e-9
 
     # Self-check: the beam's reference corner for the side that goes up lands on the table frame.
