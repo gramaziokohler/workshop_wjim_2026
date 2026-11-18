@@ -68,10 +68,11 @@ so open the repo root as the VS Code folder.
 ## Limits, for now
 
 - Beams keep their default orientation (`z_vector` empty): the Fixture can't carry it yet.
-- Toolpaths exist for `Lap`, `StepJointNotch`, `Pocket`, `Mortise`, `HouseMortise`, `Slot`, `Drilling`, `Marking`, `Chamfer`,
+- Toolpaths exist for `Lap`, `StepJointNotch`, `Pocket`, `Mortise`, `HouseMortise`, `Slot`, `Drilling`, `Marking`, `Text`, `Chamfer`,
   `BirdsMouth`, `FreeContour`, `MillContour`, `Tenon`, `House` and `LogHouseHalfLap` (two setups: from the top, then the beam flipped),
-  `Planing` (a setup per planed side) and `JackRafterCut`, `DoubleCut`, `LongitudinalCut` (the offcut cleared) (see `toolpath_lib.py`).
-  A `StepJoint` is listed as a saw cut, everything else as "no toolpath yet". Inside corners stay round (3 mm),
+  `Planing` (a setup per planed side) and `JackRafterCut`, `DoubleCut`, `StepJoint`, `LongitudinalCut`, `TriangleCut`,
+  `RidgeValleyCut`, `HipValleyRafterNotch` (what they remove is cleared) (see `toolpath_lib.py`).
+  Everything else is listed as "no toolpath yet". Inside corners stay round (3 mm),
   and an undercut is left standing, the note says so.
   `../processing_lab` is a small web page to try them out on a beam, with the robot.
 - Without a `blank`, the whole beam goes on the table, and what is more than ~500 mm along it is out of reach.

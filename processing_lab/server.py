@@ -45,22 +45,27 @@ from compas_timber.fabrication import LongitudinalCut  # noqa: E402
 from compas_timber.fabrication import Mortise  # noqa: E402
 from compas_timber.fabrication import Pocket  # noqa: E402
 from compas_timber.fabrication import Slot  # noqa: E402
+from compas_timber.fabrication import StepJoint  # noqa: E402
 from compas_timber.fabrication import StepJointNotch  # noqa: E402
 from compas_timber.fabrication import OrientationType  # noqa: E402
 from compas_timber.fabrication import StepShapeType  # noqa: E402
 from compas_timber.fabrication import Tenon  # noqa: E402
+from compas_timber.fabrication import Text  # noqa: E402
 from robot_lib import HOME  # noqa: E402
 from robot_lib import MM_PER_M  # noqa: E402
 from robot_lib import MillingCell  # noqa: E402
 from robot_lib import _robot  # noqa: E402
 from toolpath_lib import toolpaths  # noqa: E402
 from wjim_lib import Chamfer  # noqa: E402
+from wjim_lib import HipValleyRafterNotch  # noqa: E402
 from wjim_lib import House  # noqa: E402
 from wjim_lib import HouseMortise  # noqa: E402
 from wjim_lib import LogHouseHalfLap  # noqa: E402
 from wjim_lib import Marking  # noqa: E402
 from wjim_lib import MillContour  # noqa: E402
 from wjim_lib import Planing  # noqa: E402
+from wjim_lib import RidgeValleyCut  # noqa: E402
+from wjim_lib import TriangleCut  # noqa: E402
 
 PORT = 8000
 CELL = MillingCell()
@@ -151,6 +156,34 @@ VARIANTS = {
         ("10 thick, 50 deep, across the beam", lambda L, w, h: Slot(start_x=0.5 * L, start_y=0.0, length=w, depth=50.0, thickness=10.0)),
         ("6 thick (bit wide), 30 deep, angle 60°", lambda L, w, h: Slot(start_x=0.5 * L, start_y=0.0, angle=60.0, length=w, depth=30.0, thickness=6.0)),
         ("4 thick (too narrow)", lambda L, w, h: Slot(start_x=0.5 * L, start_y=0.0, length=w, depth=30.0, thickness=4.0)),
+    ],
+    "StepJoint": [
+        ("step, 20 deep, strut at 45°", lambda L, w, h: StepJoint(orientation=OrientationType.END, start_x=L - 80.0, strut_inclination=45.0, step_depth=20.0, heel_depth=0.0, step_shape=StepShapeType.STEP)),
+        ("heel, 20 deep, strut at 45°", lambda L, w, h: StepJoint(orientation=OrientationType.END, start_x=L - 80.0, strut_inclination=45.0, step_depth=0.0, heel_depth=20.0, step_shape=StepShapeType.HEEL)),
+        ("tapered heel, 20 deep", lambda L, w, h: StepJoint(orientation=OrientationType.END, start_x=L - 80.0, strut_inclination=45.0, step_depth=0.0, heel_depth=20.0, step_shape=StepShapeType.TAPERED_HEEL)),
+        (
+            "double, 15 + 15 deep",
+            lambda L, w, h: StepJoint(orientation=OrientationType.END, start_x=L - 80.0, strut_inclination=45.0, step_depth=15.0, heel_depth=15.0, step_shape=StepShapeType.DOUBLE),
+        ),
+        ("at the start, step 20 deep, strut at 60°", lambda L, w, h: StepJoint(start_x=80.0, strut_inclination=60.0, step_depth=20.0, heel_depth=0.0, step_shape=StepShapeType.STEP)),
+    ],
+    "TriangleCut": [
+        ("V across the side, 30 deep", lambda L, w, h: TriangleCut(start_x=0.5 * L, start_y=w / 2, start_depth=30.0, normal_1_x=0.707, normal_1_z=0.707, normal_2_x=-0.707, normal_2_z=0.707)),
+        ("corner off the end, 45° both ways", lambda L, w, h: TriangleCut(start_x=L - 40.0, start_y=0.0, start_depth=0.0, normal_1_x=0.707, normal_1_y=-0.707, normal_2_x=0.707, normal_2_z=0.707)),
+    ],
+    "RidgeValleyCut": [
+        ("ridge on the middle, 30°", lambda L, w, h: RidgeValleyCut(start_y=w / 2, inclination_ref_side=30.0, inclination_opp_side=30.0)),
+        ("valley, 20 deep, 30°, 200 long", lambda L, w, h: RidgeValleyCut(start_x=0.4 * L, start_y=w / 2, start_depth=20.0, inclination_ref_side=-30.0, inclination_opp_side=-30.0, start_limited=True, end_limited=True, length=200.0)),
+        ("ridge 15 deep, 20° and 40°", lambda L, w, h: RidgeValleyCut(start_y=0.4 * w, start_depth=15.0, inclination_ref_side=20.0, inclination_opp_side=40.0)),
+    ],
+    "HipValleyRafterNotch": [
+        ("hip, arms 40 + 40 wide, floor at 30°", lambda L, w, h: HipValleyRafterNotch(start_x=0.5 * L, start_y=w / 2, start_depth=20.0, width_counter_part_ref_edge_limited=True, width_counter_part_ref_edge=40.0, width_counter_part_opp_edge_limited=True, width_counter_part_opp_edge=40.0)),
+        ("hip, flat floor, arms through", lambda L, w, h: HipValleyRafterNotch(start_x=0.5 * L, start_y=w / 2, start_depth=20.0, inclination=0.0)),
+        ("valley, 120°, arms 30 + 30, flat floor", lambda L, w, h: HipValleyRafterNotch(start_x=0.5 * L, start_y=w / 2, start_depth=20.0, inclination=0.0, angle_ref_edge=120.0, angle_opp_edge=120.0, width_counter_part_ref_edge_limited=True, width_counter_part_ref_edge=30.0, width_counter_part_opp_edge_limited=True, width_counter_part_opp_edge=30.0)),
+    ],
+    "Text": [
+        ("WJIM, 60 high", lambda L, w, h: Text("WJIM", start_x=0.3 * L, start_y=w / 2, text_height=min(60.0, w - 10.0), alignment_vertical="center")),
+        ("NCYU 2026, 30 high (strokes run together)", lambda L, w, h: Text("NCYU 2026", start_x=0.3 * L, start_y=w / 2, text_height=30.0, alignment_vertical="center")),
     ],
     "HouseMortise": [
         ("house 80 x 60, 10 deep", lambda L, w, h: HouseMortise(start_x=0.5 * L, start_y=w / 2, length=80.0, width=min(60.0, w - 10), depth=10.0, shape="square")),
