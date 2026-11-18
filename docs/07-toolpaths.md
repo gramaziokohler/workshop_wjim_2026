@@ -34,7 +34,7 @@ not milled:
 
 Set `side` to the next setup's side to see it on the table, and run each setup as its own program.
 Between setups, push the beam's reference corner back against the stop at the table's origin.
-With a `blank`, every setup mills the same blank.
+With a `blank`, every setup mills the same blank, its cropped end against the stop and what's milled away from the robot.
 
 ## Before the real robot
 
