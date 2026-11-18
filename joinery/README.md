@@ -37,6 +37,9 @@ Open `joinery.gh` (Rhino units: **millimetres**). The canvas reads left to right
 
 `corner_node.py` is a worked example: the joint for the four corners.
 
+Working with a coding agent? Point it at `../skills/write-a-joint/SKILL.md` (or copy that folder
+into your agent's skills folder, e.g. `.claude/skills/`).
+
 ## The files
 
 | | |
@@ -44,6 +47,7 @@ Open `joinery.gh` (Rhino units: **millimetres**). The canvas reads left to right
 | `joinery.gh` | the Grasshopper document |
 | `junction_lib.py` | finding junctions, exporting them, generating and loading joint modules |
 | `joint_module.py.template` | the joint module `junction_lib.py` writes for a newly exported junction |
+| `check_joint.py` | runs a joint module against its Fixture outside VS Code and Rhino, with its toolpaths (`uv run python joinery/check_joint.py joinery/corner_node.py`) |
 | `toolpath_lib.py` | toolpaths from BTLx processings (`python toolpath_lib.py` checks itself) |
 | `robot_lib.py` | the milling cell and the robot's inverse kinematics (`python robot_lib.py` checks itself) |
 | `send_to_robot.py` | sends a program to the robot over COMPAS RRC (`uv run`, needs nothing installed) |
