@@ -26,7 +26,7 @@ No git? **[GitHub Desktop](https://desktop.github.com/) → File → Clone repos
 Open the file from the repo root in Grasshopper and wait.
 It builds one Python environment, **`wjim_ncyu2026`**, and prints what it installed.
 
-<div class="shot-todo">00_install.ghx on the canvas, its panel listing compas_timber 3.0.0, compas_fab 2.1.0 …</div>
+<div class="shot-todo">00_install.ghx on the canvas, its panel listing compas_timber 3.0.2, compas_fab 2.1.0 …</div>
 
 !!! tip "Takes a few minutes, once"
     Every other workshop file only *uses* the environment (`# venv: wjim_ncyu2026`).
@@ -46,9 +46,9 @@ Then <kbd>Cmd</kbd>/<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> → **Develope
 Open `joinery/corner_node.py` once.
 
 The extension downloads its own Python and `compas_timber`. When the status bar says
-**compas_timber 3.0.0**, you're set.
+**compas_timber 3.0.2**, you're set.
 
-![VS Code status bar: compas_timber 3.0.0 · release](assets/shots/statusbar.png){ width="320" }
+![VS Code status bar: compas_timber 3.0.2 · release](assets/shots/statusbar.png){ width="320" }
 
 ??? failure "Something's off?"
     | Symptom | Fix |

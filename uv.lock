@@ -278,7 +278,7 @@ wheels = [
 
 [[package]]
 name = "compas"
-version = "2.15.1"
+version = "2.16.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jsonschema", marker = "sys_platform == 'darwin' or sys_platform == 'win32'" },
@@ -294,9 +294,9 @@ dependencies = [
     { name = "watchdog", version = "6.0.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and sys_platform == 'darwin') or (python_full_version < '3.11' and sys_platform == 'win32')" },
     { name = "watchdog", version = "7.1.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and sys_platform == 'darwin') or (python_full_version >= '3.11' and sys_platform == 'win32')" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/98/4d/f9de336ce5d38a0d1ec2cdfde62dbe800dca7de10c0dc7c9a05762535739/compas-2.15.1.tar.gz", hash = "sha256:57ad5aaa1dc33333fc3938ac53623b45ecbd0dce3704a9658986227c30fe085c", size = 2240329, upload-time = "2026-03-19T17:47:33.068Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/96/84/a475cac4dd0fde0fdd6d14fcc89a358d5791a7b7f31f7b823c2ebbe2c65e/compas-2.16.0.tar.gz", hash = "sha256:5cf153bb04e9338e7a81723ac3ba4c746c2d40bf2d34a98417853ea5b7281b80", size = 2237877, upload-time = "2026-11-17T23:19:12.023Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/c8/ed36552110760981d25f1bd48778b5451267cb4eb9dda652c32813fd2c84/compas-2.15.1-py3-none-any.whl", hash = "sha256:509ab436da7fc185b66436d5a1044ab94c932e9d9ca569cb5fe225f32f4493b2", size = 2458244, upload-time = "2026-03-19T17:47:31.238Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/39/d831f47e83dd6b5d7552aee3956bd9cab4d5cd28452bfda62dbbdbfe813d/compas-2.16.0-py3-none-any.whl", hash = "sha256:f331c7581e83024fc3358786d4917ac24df1c41552ed4997599787f76cb5f5fc", size = 2454610, upload-time = "2026-11-17T23:19:10.264Z" },
 ]
 
 [[package]]
@@ -394,7 +394,7 @@ wheels = [
 
 [[package]]
 name = "compas-timber"
-version = "3.0.0"
+version = "3.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "compas", marker = "sys_platform == 'darwin' or sys_platform == 'win32'" },
@@ -406,9 +406,9 @@ dependencies = [
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version == '3.11.*' and sys_platform == 'darwin') or (python_full_version == '3.11.*' and sys_platform == 'win32')" },
     { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.12' and sys_platform == 'darwin') or (python_full_version >= '3.12' and sys_platform == 'win32')" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b6/55/85f938f9bbe30d02c0cd2ada4bf3d31fc52bc6b322e1767c398216e68575/compas_timber-3.0.0.tar.gz", hash = "sha256:bdd8cc84dfc5275d1a7ed29629fd5c1c07c090b8e560644dd807aafab02c001d", size = 250267, upload-time = "2026-11-10T20:24:54.692Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/88/f68c37489276918e37c5f1e69b0e97b01d339ad0fe38b74d389b0ac5038e/compas_timber-3.0.2.tar.gz", hash = "sha256:60c3666ea08d43450f8af024961e9d1ec81f844cb29c6594fb88a8c4471a8cf9", size = 250368, upload-time = "2026-11-18T18:21:15.446Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4e/82/9684469e140ff4027e89a992bd9bcf27e8ab33060bdc15d202dcf3ca4ebb/compas_timber-3.0.0-py3-none-any.whl", hash = "sha256:9b98f21d9ce931272b72359d218e654e9362dfdf8d403ac519fb27a16547aae1", size = 317698, upload-time = "2026-11-10T20:24:53.316Z" },
+    { url = "https://files.pythonhosted.org/packages/c3/27/a3ae4d87e573307fce9529cc81bea1df1c4c7d3357b3fd34db43cd3c6a65/compas_timber-3.0.2-py3-none-any.whl", hash = "sha256:1c2577543f504e60fd109846487e52ee17423dfa77a8a99d7b5af8348fee7a44", size = 317878, upload-time = "2026-11-18T18:21:13.993Z" },
 ]
 
 [[package]]
@@ -1375,7 +1375,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "compas-brep", extras = ["occ"], marker = "python_full_version >= '3.10' and extra == 'dev'" },
-    { name = "compas-timber", specifier = "==3.0.0" },
+    { name = "compas-timber", specifier = "==3.0.2" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-mock", marker = "extra == 'dev'" },
 ]
@@ -1386,7 +1386,6 @@ name = "workshop-wjim-2026"
 version = "0.0.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "compas", marker = "sys_platform == 'darwin' or sys_platform == 'win32'" },
     { name = "compas-brep", extra = ["occ"], marker = "sys_platform == 'darwin' or sys_platform == 'win32'" },
     { name = "compas-fab", marker = "sys_platform == 'darwin' or sys_platform == 'win32'" },
     { name = "compas-fab-native", marker = "sys_platform == 'darwin' or sys_platform == 'win32'" },
@@ -1403,12 +1402,11 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "compas", specifier = "==2.15.1" },
     { name = "compas-brep", extras = ["occ"], specifier = "==0.4.2" },
     { name = "compas-fab" },
     { name = "compas-fab-native" },
     { name = "compas-robots" },
-    { name = "compas-timber", specifier = "==3.0.0" },
+    { name = "compas-timber", specifier = "==3.0.2" },
     { name = "wjim-lib", editable = "wjim_lib" },
 ]
 
