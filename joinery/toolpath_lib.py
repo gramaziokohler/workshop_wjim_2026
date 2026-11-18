@@ -11,22 +11,22 @@ material. What gets a toolpath today:
 - `HouseMortise`: a closed pocket, zig-zag along its long side, then the mortise
   nested in it; the corners come out rounded to the bit's radius.
 - `Drilling`: a helix down the hole, the core cleared ring by ring.
-- `Marking`: lines engraved `MARK_DEPTH` deep.
+- `Marking`, `Text`: lines engraved `MARK_DEPTH` deep; text in compas_timber's single-stroke font.
 - `Chamfer`: faced with the bit square to the chamfer, layer by layer, on the
   edges of the side facing up.
 - `Tenon`: in two setups, the beam flat on the table: the top half from the
   reference side, the bottom half with the beam flipped onto it. Two `Toolpath`s.
   A `House` is one, and the tenon nested in it is cleared around after it.
-- `JackRafterCut`, `DoubleCut`, `LongitudinalCut` (unlimited): the offcut cleared like a `Pocket`, from the
-  ref side, or from the opposite side if the face leans over the offcut. A convex `DoubleCut` has two.
+- `JackRafterCut`, `DoubleCut`, `StepJoint`, `LongitudinalCut` (unlimited), `TriangleCut`, `RidgeValleyCut`,
+  `HipValleyRafterNotch`: what they remove is cleared like a `Pocket`, from the ref side, or from the opposite
+  side if a face leans over it from the ref side only. Some remove two volumes, each its own `Toolpath`.
 - `BirdsMouth`: the V cleared like a `Pocket`, its sloped faces left in steps of a layer.
 - `LogHouseHalfLap`: two through laps, from the reference side and the beam flipped. Two `Toolpath`s.
 - `Planing`: each planed side faced, in a setup of its own.
 - `FreeContour`, `MillContour`: followed with the bit on its `tool_position` side, layer by layer;
   a closed, convex, not-through contour whose inside is removed is cleared as a pocket.
 
-A `StepJoint` is listed as a saw cut, with what the saw needs. Anything else is listed as "no toolpath
-yet" - that list is the honest answer to "can we mill this joint?".
+Anything else is listed as "no toolpath yet" - that list is the honest answer to "can we mill this joint?".
 
 Adapted from the CAADRIA 2026 workshop's `lib_extra_toolpath_v2.py`.
 Runs in Rhino 8 (Python 3.9) and in plain Python.
@@ -42,7 +42,6 @@ from compas.geometry import Frame
 from compas.geometry import Plane
 from compas.geometry import Point
 from compas.geometry import Vector
-from compas.geometry import intersection_line_plane
 from compas.geometry import intersection_plane_plane_plane
 from compas.geometry import offset_polygon
 from compas.geometry import offset_polyline
@@ -63,21 +62,24 @@ from compas_timber.fabrication import StepJoint
 from compas_timber.fabrication import StepJointNotch
 from compas_timber.fabrication import StepShapeType
 from compas_timber.fabrication import Tenon
+from compas_timber.fabrication import Text
 from wjim_lib import Chamfer
 from wjim_lib import ChamferExitType
 from wjim_lib import House
+from wjim_lib import HipValleyRafterNotch
 from wjim_lib import HouseMortise
 from wjim_lib import LogHouseHalfLap
 from wjim_lib import Marking
 from wjim_lib import MarkingStyleType
 from wjim_lib import Planing
+from wjim_lib import RidgeValleyCut
 from wjim_lib import SawContour
+from wjim_lib import TriangleCut
 
 BIT_DIAMETER = 6.0  # mm, the bit on site
 CLEARANCE = 5.0  # mm between the bit and a beam edge it cuts through, so it goes in and out of the wood in the air
 MARK_DEPTH = 1.0  # mm, how deep a Marking is engraved
-SAW_CUTS = (StepJoint,)
-MILLED_CUTS = (JackRafterCut, DoubleCut, LongitudinalCut)
+MILLED_CUTS = (JackRafterCut, DoubleCut, StepJoint, LongitudinalCut, TriangleCut, RidgeValleyCut, HipValleyRafterNotch)
 CHAMFER_EDGES = ("12", "23", "34", "41")  # Chamfer's edge flags, edge i joins ref sides i and i + 1
 
 
@@ -130,8 +132,8 @@ def toolpaths(beam, features=None, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe
         elif isinstance(processing, Drilling):
             frames = drilling_toolpath(beam, processing, bit_diameter, stepdown, safe_height)
             note = f"helix, {len(frames)} frames"
-        elif isinstance(processing, Marking):
-            frames = marking_toolpath(beam, processing, safe_height=safe_height)
+        elif isinstance(processing, (Marking, Text)):
+            frames = (marking_toolpath if isinstance(processing, Marking) else text_toolpath)(beam, processing, safe_height=safe_height)
             note = f"engraved {MARK_DEPTH:.0f} mm deep with the {bit_diameter:.0f} mm bit, {len(frames)} frames"
         elif isinstance(processing, Chamfer):
             frames = chamfer_toolpath(beam, processing, side, bit_diameter, stepdown, safe_height)
@@ -147,9 +149,10 @@ def toolpaths(beam, features=None, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe
             continue
         elif isinstance(processing, MILLED_CUTS):
             for planes in cut_volumes(beam, processing):
-                # a face leaning over the offcut is an undercut from the ref side: mill it with the beam flipped
-                at = side if all(Vector(*p.normal).dot(beam.ref_sides[side].normal) < 1e-6 for p in planes) else (side + 2) % 4
-                frames, note = convex_toolpath(beam, planes + _beam_planes(beam), at, bit_diameter, stepdown, safe_height, name=f"offcut from side {at}")
+                # a face leaning over the volume is an undercut: mill from the opposite side if none leans over it from there
+                leans = [any(Vector(*p.normal).dot(beam.ref_sides[s].normal) > 1e-6 for p in planes) for s in (side, (side + 2) % 4)]
+                at = (side + 2) % 4 if leans == [True, False] else side
+                frames, note = convex_toolpath(beam, planes + _beam_planes(beam), at, bit_diameter, stepdown, safe_height, name=f"cleared from side {at}")
                 result.append(Toolpath(processing, frames, at, note))
             continue
         elif isinstance(processing, BirdsMouth):
@@ -162,33 +165,10 @@ def toolpaths(beam, features=None, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe
             continue
         elif isinstance(processing, FreeContour) and not isinstance(processing, SawContour):  # MillContour is one
             frames, note = contour_toolpath(beam, processing, bit_diameter, stepdown, safe_height)
-        elif isinstance(processing, SAW_CUTS):
-            frames, note = [], saw_cut_note(beam, processing)
         else:
             frames, note = [], "no toolpath for this processing yet"
         result.append(Toolpath(processing, frames, side, note))
     return result
-
-
-def saw_cut_note(beam, cut):
-    """Where to saw, for each plane of `cut`: where it crosses the beam's axis,
-    measured from the start of the timber, and its angle from a square cut as
-    seen on side 0 and on side 1."""
-    planes = cut.planes_from_params_and_beam(beam) if hasattr(cut, "planes_from_params_and_beam") else [cut.plane_from_params_and_beam(beam)]
-    start = beam.ref_sides[0]
-    lines = []
-    for plane in planes:
-        at = start.to_local_coordinates(Point(*intersection_line_plane(beam.centerline, plane)))[0]
-        on_0, on_1 = (_angle_from_square(plane, beam.ref_sides[i]) for i in (0, 1))
-        lines.append(f"at {at:.1f} mm, {on_0:.1f}° on side 0, {on_1:.1f}° on side 1")
-    return "saw " + "; ".join(lines)
-
-
-def _angle_from_square(plane, side):
-    """The angle between the cut's line on `side` and a square cut across it."""
-    cut_line = Vector(*plane.normal).cross(side.normal)
-    angle = math.degrees(cut_line.angle(side.yaxis))
-    return min(angle, 180.0 - angle)
 
 
 def _unproxified(feature):
@@ -451,15 +431,92 @@ def convex_toolpath(beam, planes, side_index, bit_diameter=BIT_DIAMETER, stepdow
 
 
 def cut_volumes(beam, cut):
-    """The offcuts of a `JackRafterCut`, a `DoubleCut` or an unlimited `LongitudinalCut`, each as its cut planes,
-    normals out of it, into the part that stays. Bound them by the beam's sides to get the volume."""
+    """The convex volumes one of `MILLED_CUTS` removes, each as its planes, normals out of it, into the part that
+    stays. Bound them by the beam's sides to get the volume."""
     if isinstance(cut, DoubleCut):
         planes = cut.planes_from_params_and_beam(beam)
         return [planes] if cut.is_concave else [[p] for p in planes]  # concave: one notch between both; convex: each cuts off its own corner
+    if isinstance(cut, StepJoint):
+        if cut.tenon:
+            raise ValueError("A StepJoint's tenon isn't milled yet.")
+        planes = cut.planes_from_params_and_beam(beam)  # as StepJoint.apply trims with them: each removes what is behind it
+        return {StepShapeType.HEEL: [planes], StepShapeType.DOUBLE: [planes[2:], planes[:2]]}.get(cut.step_shape, [[p] for p in planes])
+    if isinstance(cut, TriangleCut):
+        start = (cut.start_x, cut.start_y, -cut.start_depth)
+        normals = [(cut.normal_1_x, cut.normal_1_y, cut.normal_1_z), (cut.normal_2_x, cut.normal_2_y, cut.normal_2_z)]
+        return [[_side_plane(beam, cut, start, [-c for c in n]) for n in normals]]  # its normals point into the wedge
+    if isinstance(cut, RidgeValleyCut):
+        return ridge_valley_volumes(beam, cut)
+    if isinstance(cut, HipValleyRafterNotch):
+        return hip_valley_notch_volumes(beam, cut)
     if isinstance(cut, LongitudinalCut) and (cut.start_limited or cut.end_limited or cut.depth_limited):
         raise ValueError("Only unlimited longitudinal cuts are milled for now (compas_timber can't model the limited ones either).")
     plane = cut.plane_from_params_and_beam(beam)
     return [[Plane(plane.point, -Vector(*plane.normal))]]  # the normal points into the offcut
+
+
+def _side_plane(beam, processing, point, normal):
+    """A plane given in the coordinates of `processing`'s ref side, in the beam's."""
+    side = beam.ref_sides[processing.ref_side_index]
+    return Plane(side.to_world_coordinates(Point(*point)), side.xaxis * normal[0] + side.yaxis * normal[1] + side.zaxis * normal[2])
+
+
+def ridge_valley_volumes(beam, cut):
+    """What a `RidgeValleyCut` removes, as planes: above each inclined plane, as `RidgeValleyCut.volumes_from_params_and_element`
+    has it. Over a ridge that is everything above either plane, two volumes; in a valley, what is above both, one."""
+    start = (cut.start_x, cut.start_y, -cut.start_depth)
+    end = (cut.start_x + cut.length, cut.start_y, -cut.start_depth)
+    halves = []
+    for s, inclination, angle_start, angle_end in (
+        (-1.0, cut.inclination_ref_side, cut.angle_ref_edge_start, cut.angle_ref_edge_end),
+        (1.0, cut.inclination_opp_side, cut.angle_opp_edge_start, cut.angle_opp_edge_end),
+    ):
+        i, a0, a1 = math.radians(inclination), math.radians(angle_start), math.radians(angle_end)
+        slope = Vector(0.0, s * math.cos(i), -math.sin(i))  # in the inclined plane, away from the ridge line
+        planes = [_side_plane(beam, cut, start, (0.0, -s * math.sin(i), -math.cos(i)))]  # the inclined plane, normal down
+        if cut.start_limited:
+            planes.append(_side_plane(beam, cut, start, slope * math.cos(a0) - Vector(math.sin(a0), 0.0, 0.0)))
+        if cut.end_limited:
+            planes.append(_side_plane(beam, cut, end, slope * math.cos(a1) + Vector(math.sin(a1), 0.0, 0.0)))
+        halves.append(planes)
+    # shortcut: each side's start and end walls bound its whole volume, past the ridge line too; exact while both sides' walls agree
+    return halves if cut.inclination_ref_side + cut.inclination_opp_side >= 0 else [halves[0] + halves[1]]
+
+
+def hip_valley_notch_volumes(beam, notch):
+    """What a `HipValleyRafterNotch` removes, as planes: above its floor, inside the chevron, as two volumes, one per arm.
+
+    Each arm is a strip between its outer wall (through the tip) and its inner wall. Past the other arm, a hip's strip
+    stops at that arm's outer wall, a valley's (arms falling away from the tip) at its inner wall."""
+    side = beam.ref_sides[notch.ref_side_index]
+    inclination = math.radians(notch.inclination)
+    rise = side.xaxis * math.cos(inclination) * (1.0 if notch.orientation == OrientationType.START else -1.0) + side.zaxis * math.sin(inclination)
+    tip = side.to_world_coordinates(Point(notch.start_x, notch.start_y, -notch.start_depth))
+    floor = Frame(tip, rise, side.yaxis)
+    up = floor.zaxis if floor.zaxis.dot(side.zaxis) >= 0 else -floor.zaxis
+
+    def wall(normal, offset=0.0):  # a wall square to the floor, `normal` in the floor's xy, out of the volume
+        n = floor.xaxis * normal[0] + floor.yaxis * normal[1]
+        return Plane(tip + n * offset, n)
+
+    a, b = math.radians(notch.angle_ref_edge), math.radians(notch.angle_opp_edge)
+    arms = [  # per arm: its normal into it from its outer wall, its direction away from the tip, its width or None
+        ((math.sin(a), math.cos(a)), (math.cos(a) / math.sin(a), -1.0), notch.width_counter_part_ref_edge if notch.width_counter_part_ref_edge_limited else None),
+        ((math.sin(b), -math.cos(b)), (math.cos(b) / math.sin(b), 1.0), notch.width_counter_part_opp_edge if notch.width_counter_part_opp_edge_limited else None),
+    ]
+    volumes = []
+    for (normal, _, width), (other_normal, direction, other_width) in (arms, arms[::-1]):
+        planes = [Plane(tip, -up), wall([-c for c in normal])]
+        if width is not None:
+            planes.append(wall(normal, width))
+        if direction[0] * normal[0] + direction[1] * normal[1] > 0:  # the other arm runs into this one's strip: a hip
+            planes.append(wall([-c for c in other_normal]))
+            if width is None:
+                return [planes]  # the whole V between the outer walls, the other arm included
+        elif other_width is not None:
+            planes.append(wall(other_normal, other_width))
+        volumes.append(planes)
+    return volumes
 
 
 def birds_mouth_planes(beam, notch):
@@ -722,12 +779,24 @@ def marking_lines(beam, marking):
 
 def marking_toolpath(beam, marking, depth=MARK_DEPTH, safe_height=20.0):
     """Engrave a `Marking`'s lines `depth` deep, in and out of the wood at each line's ends."""
-    down = Vector(*(-beam.ref_sides[marking.ref_side_index].normal))
+    return _engrave(beam.ref_sides[marking.ref_side_index], marking_lines(beam, marking), depth, safe_height)
+
+
+def text_toolpath(beam, text, depth=MARK_DEPTH, safe_height=20.0):
+    """Engrave a `Text` `depth` deep, along the strokes of compas_timber's single-stroke font. The strokes are as
+    wide as the bit, so letters much less than ten bits tall run together."""
+    curves = text.create_text_curves_for_element(beam)
+    return _engrave(beam.ref_sides[text.ref_side_index or 0], [curve.points for curve in curves], depth, safe_height)
+
+
+def _engrave(side, polylines, depth, safe_height):
+    """Follow each polyline on `side` `depth` deep, in and out of the wood at its ends."""
+    down = Vector(*(-side.normal))
     frames = []
-    for start, end in marking_lines(beam, marking):
-        along = (end - start).unitized()
-        yaxis = down.cross(along)
-        frames += [Frame(point, along, yaxis) for point in (start - down * safe_height, start + down * depth, end + down * depth, end - down * safe_height)]
+    for points in polylines:
+        points = [Point(*p) for p in points]
+        path = [points[0] - down * safe_height] + [p + down * depth for p in points] + [points[-1] - down * safe_height]
+        frames += [Frame(p, side.xaxis, down.cross(side.xaxis)) for p in path]
     return frames
 
 
@@ -892,13 +961,6 @@ if __name__ == "__main__":
             for plane in notch.planes_from_params_and_beam(beam):
                 assert (f.point - plane.point).dot(plane.normal) * (opening - plane.point).dot(plane.normal) >= -1e-6
     print(f"Step notch toolpath stays inside the notch ({len(toolpath.frames)} frames).")
-
-    # Self-check: a saw cut's note reads back the cut's own parameters.
-    beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(1000, 0, 0)), width=80, height=160)
-    assert saw_cut_note(beam, JackRafterCut(start_x=500.0, angle=90.0, inclination=90.0)) == "saw at 500.0 mm, 0.0° on side 0, 0.0° on side 1"
-    assert saw_cut_note(beam, JackRafterCut(start_x=500.0, angle=60.0, inclination=90.0)) == "saw at 523.1 mm, 30.0° on side 0, 0.0° on side 1"
-    assert saw_cut_note(beam, JackRafterCut(start_x=500.0, angle=90.0, inclination=70.0)) == "saw at 529.1 mm, 0.0° on side 0, 20.0° on side 1"
-    print("Saw cut notes read back the cuts' angles and positions.")
 
     # Self-check: pockets, a mortise and drillings reach their walls, less the bit's radius, run past open sides, and say so when they can't.
     from compas_timber.fabrication import Drilling, Mortise, Pocket
@@ -1082,3 +1144,34 @@ if __name__ == "__main__":
             x, y, z = side.to_local_coordinates(f.point)
             assert not (580 - r + 1e-6 < x < 600 + r - 1e-6 and 30 - r + 1e-6 < y < 50 + r - 1e-6 and 40 + 1e-6 < -z < 80 - 1e-6), ("cuts the nested tenon", x, y, z)
     print("Cuts clear their offcuts, slots stay in the slot, a house leaves its nested tenon standing.")
+
+    # Self-check: step joints, triangle and ridge/valley cuts and hip/valley notches only cut where compas_timber or wjim_lib remove wood.
+    for cut in (
+        StepJoint(orientation=OrientationType.END, start_x=520.0, strut_inclination=45.0, step_depth=20.0, heel_depth=0.0, step_shape=StepShapeType.STEP),
+        StepJoint(start_x=80.0, strut_inclination=60.0, step_depth=0.0, heel_depth=20.0, step_shape=StepShapeType.TAPERED_HEEL),
+        TriangleCut(start_x=300.0, start_y=40.0, start_depth=30.0, normal_1_x=0.707, normal_1_z=0.707, normal_2_x=-0.707, normal_2_z=0.707),
+        RidgeValleyCut(start_y=30.0, start_depth=15.0, inclination_ref_side=20.0, inclination_opp_side=40.0),
+        RidgeValleyCut(start_x=200.0, start_y=40.0, start_depth=20.0, inclination_ref_side=-30.0, inclination_opp_side=-30.0, start_limited=True, end_limited=True, length=200.0),
+        HipValleyRafterNotch(start_x=300.0, start_y=40.0, start_depth=20.0, inclination=0.0),
+        HipValleyRafterNotch(
+            start_x=300.0, start_y=40.0, start_depth=20.0, inclination=0.0, angle_ref_edge=120.0, angle_opp_edge=120.0,
+            width_counter_part_ref_edge_limited=True, width_counter_part_ref_edge=30.0, width_counter_part_opp_edge_limited=True, width_counter_part_opp_edge=30.0,
+        ),
+    ):
+        beam, paths = offcut_toolpaths(cut)
+        kept = beam.compute_modelgeometry()
+        for toolpath in paths:
+            side = beam.ref_sides[toolpath.ref_side_index]
+            assert toolpath.frames and "UNDERCUT" not in toolpath.note, toolpath
+            for f in toolpath.frames[:: max(1, len(toolpath.frames) // 100)]:
+                tip = f.point + side.normal * 0.3  # just off the face it finishes
+                disc = [tip + (side.xaxis * math.cos(a) + side.yaxis * math.sin(a)) * (r - 0.3) for a in (0.0, 0.5 * math.pi, math.pi, 1.5 * math.pi)]
+                assert not any(kept.contains(p) for p in [tip] + disc), (type(cut).__name__, side.to_local_coordinates(f.point))
+
+    # Self-check: text is engraved along compas_timber's strokes, MARK_DEPTH deep.
+    text = Text("WJIM", start_x=150.0, start_y=40.0, text_height=60.0, alignment_vertical="center")
+    beam, (toolpath,) = offcut_toolpaths(text)
+    side, grooves = beam.ref_sides[0], text.grooves_for_element(beam)
+    cut = [f.point for f in toolpath.frames if -side.to_local_coordinates(f.point)[2] > 1e-6]
+    assert cut and all(abs(side.to_local_coordinates(p)[2] + MARK_DEPTH) < 1e-6 and any(g.contains_point(p, tol=1e-3) for g in grooves) for p in cut)
+    print("Step joints, triangle, ridge and valley cuts and notches cut only what they remove; text follows its strokes.")
