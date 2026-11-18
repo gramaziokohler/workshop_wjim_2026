@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Processing lab</title>
+<style>
+  :root { --bg: #f4f2ee; --panel: #fffdf9; --ink: #222; --muted: #777; --line: #ddd8cf; --bad: #b3261e; --ok: #2e6b3a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.4 system-ui, sans-serif; color: var(--ink); background: var(--bg); display: flex; height: 100vh; }
+  aside { width: 320px; padding: 14px; background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  h1 { font-size: 15px; margin: 0; }
+  label { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+  select, input[type=number] { width: 100%; padding: 5px; font: inherit; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
+  .dims { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .note { padding: 8px; border-radius: 4px; background: #eef4ee; color: var(--ok); white-space: pre-wrap; word-break: break-word; }
+  .note.bad { background: #fbeceb; color: var(--bad); }
+  .note:empty { display: none; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  td { padding: 1px 4px; border-bottom: 1px solid var(--line); }
+  td:first-child { color: var(--muted); }
+  .scrub { display: flex; gap: 6px; align-items: center; }
+  .scrub input { flex: 1; }
+  button { font: inherit; padding: 4px 10px; border: 1px solid var(--line); border-radius: 4px; background: #fff; cursor: pointer; }
+  .legend span { display: inline-block; width: 10px; height: 3px; margin: 0 4px 2px 8px; vertical-align: middle; }
+  main { flex: 1; position: relative; }
+  #busy { position: absolute; top: 10px; right: 10px; background: #000a; color: #fff; padding: 4px 10px; border-radius: 4px; display: none; }
+</style>
+</head>
+<body>
+<aside>
+  <h1>Processing lab</h1>
+  <div>
+    <label>Beam (mm): length, width, height</label>
+    <div class="dims">
+      <input id="length" type="number" value="600" step="10">
+      <input id="width" type="number" value="80" step="10">
+      <input id="height" type="number" value="120" step="10">
+    </div>
+  </div>
+  <div><label for="processing">Processing</label><select id="processing"></select></div>
+  <div><label for="variant">Variant</label><select id="variant"></select></div>
+  <div id="setupBox"><label for="setup">Setup: side up on the table</label><select id="setup"></select></div>
+  <div id="note" class="note"></div>
+  <div id="error" class="note bad"></div>
+  <div>
+    <label>Trajectory <span id="count"></span></label>
+    <div class="scrub"><button id="play">▶</button><input id="t" type="range" min="0" max="0" value="0"></div>
+  </div>
+  <table id="joints"></table>
+  <label style="text-transform:none;font-size:13px;color:inherit"><input id="showRobot" type="checkbox" checked> show robot</label>
+  <div class="legend"><span style="background:#d33"></span>toolpath<span style="background:#27c"></span>planned tip</div>
+  <div><label>Parameters</label><table id="params"></table></div>
+</aside>
+<main><div id="busy">computing…</div></main>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const $ = (id) => document.getElementById(id);
+const main = document.querySelector("main");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+main.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf4f2ee);
+THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
+const camera = new THREE.PerspectiveCamera(40, 1, 10, 50000);
+camera.up.set(0, 0, 1);
+camera.position.set(2600, -5200, 1800);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(1300, -3000, 400);
+window.lab = { camera, controls };  // for poking from the console
+scene.add(new THREE.HemisphereLight(0xffffff, 0x888877, 2.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+sun.position.set(2000, -6000, 5000);
+scene.add(sun);
+const grid = new THREE.GridHelper(6000, 60, 0xccc6bb, 0xe2ddd4);
+grid.rotation.x = Math.PI / 2;
+grid.position.set(1000, -3000, 0);
+scene.add(grid);
+
+function resize() {
+  renderer.setSize(main.clientWidth, main.clientHeight);
+  camera.aspect = main.clientWidth / main.clientHeight;
+  camera.updateProjectionMatrix();
+}
+addEventListener("resize", resize);
+resize();
+renderer.setAnimationLoop(() => renderer.render(scene, camera));
+
+function geometry({ vertices, faces }) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  g.setIndex(faces);
+  g.computeVertexNormals();
+  return g;
+}
+function line(points, color, width = 1) {
+  const g = new THREE.BufferGeometry().setFromPoints(points.map((p) => new THREE.Vector3(...p)));
+  return new THREE.Line(g, new THREE.LineBasicMaterial({ color, linewidth: width }));
+}
+function fixed(object) { object.matrixAutoUpdate = false; return object; }
+
+// the robot: meshes come at zero, every trajectory point moves them by its own matrix
+const steel = new THREE.MeshStandardMaterial({ color: 0xb8bcc2, metalness: 0.2, roughness: 0.6 });
+const spindle = new THREE.MeshStandardMaterial({ color: 0xe08a2c, roughness: 0.5 });
+const links = [];
+let tool;
+const robot = await (await fetch("/api/robot")).json();
+for (const link of robot.links) {
+  const group = fixed(new THREE.Group());
+  for (const m of link.meshes) group.add(new THREE.Mesh(geometry(m), steel));
+  scene.add(group);
+  links.push(group);
+}
+tool = fixed(new THREE.Mesh(geometry(robot.tool), spindle));
+scene.add(tool);
+tool.visible = false;
+
+// what changes per run
+const run = new THREE.Group();
+scene.add(run);
+const tip = new THREE.Mesh(new THREE.SphereGeometry(4), new THREE.MeshBasicMaterial({ color: 0x2277cc }));
+scene.add(tip);
+tip.visible = false;
+let trajectory = [];
+
+function show(i) {
+  const p = trajectory[i];
+  if (!p) return;
+  p.links.forEach((m, k) => m && links[k].matrix.fromArray(m));
+  tool.matrix.fromArray(p.tool);
+  tool.visible = tip.visible = true;
+  tip.position.set(...p.tip);
+  $("count").textContent = `${i + 1} / ${trajectory.length}`;
+  $("joints").innerHTML = p.q.map((v, k) => `<tr><td>a${k + 1}</td><td>${(v * 180 / Math.PI).toFixed(1)}°</td></tr>`).join("");
+}
+
+function home() {  // zero pose
+  links.forEach((l) => l.matrix.identity());
+  tool.visible = tip.visible = false;
+  $("count").textContent = "";
+  $("joints").innerHTML = "";
+}
+
+const catalog = await (await fetch("/api/catalog")).json();
+for (const pkg of ["compas_timber", "wjim_lib"]) {
+  const group = document.createElement("optgroup");
+  group.label = pkg;
+  for (const p of catalog.filter((p) => p.package === pkg)) {
+    const o = new Option(p.variants.length ? p.name : `${p.name} (no variants yet)`, p.name);
+    o.disabled = !p.variants.length;
+    group.append(o);
+  }
+  $("processing").append(group);
+}
+
+function fillVariants() {
+  const p = catalog.find((p) => p.name === $("processing").value);
+  $("variant").replaceChildren(...p.variants.map((v, i) => new Option(v, i)));
+}
+
+let pending = 0;
+async function compute() {
+  const ticket = ++pending;
+  $("busy").style.display = "block";
+  const body = { name: $("processing").value, index: +$("variant").value, length: +$("length").value, width: +$("width").value, height: +$("height").value };
+  const r = await (await fetch("/api/run", { method: "POST", body: JSON.stringify(body) })).json();
+  if (ticket !== pending) return;  // a newer request is on its way
+  $("busy").style.display = "none";
+  result = r;
+  const setups = r.setups || [];
+  $("setup").replaceChildren(...setups.map((s, k) => new Option(`side ${s.side}${k ? " (beam flipped)" : ""}`, k)));
+  $("setupBox").style.display = setups.length > 1 ? "" : "none";
+  $("note").textContent = r.note || "";
+  $("params").innerHTML = Object.entries(r.params || {}).map(([k, v]) => `<tr><td>${k}</td><td>${typeof v === "number" ? +v.toFixed(3) : v}</td></tr>`).join("");
+  showSetup(0);
+}
+
+let result = {};
+function showSetup(k) {
+  const s = result.setups?.[k] || {};
+  run.clear();
+  if (s.beam) {
+    run.add(new THREE.Mesh(geometry(s.beam), new THREE.MeshStandardMaterial({ color: 0xe2c79a, roughness: 0.9, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide })));
+    for (const e of s.edges) {
+      const pts = [];
+      for (let i = 0; i < e.length; i += 3) pts.push([e[i], e[i + 1], e[i + 2]]);
+      run.add(line(pts, 0x6b5a40));
+    }
+  }
+  if (s.path?.length) run.add(line(s.path, 0xdd3333));
+  trajectory = s.trajectory || [];
+  if (trajectory.length) run.add(line(trajectory.map((p) => p.tip), 0x2277cc));
+  $("error").textContent = [result.error, s.plan_error && `planning: ${s.plan_error}`, ...(result.debug || [])].filter(Boolean).join("\n");
+  $("t").max = Math.max(trajectory.length - 1, 0);
+  $("t").value = 0;
+  trajectory.length ? show(0) : home();
+}
+
+let playing = null;
+$("play").onclick = () => {
+  if (playing) { clearInterval(playing); playing = null; $("play").textContent = "▶"; return; }
+  $("play").textContent = "❚❚";
+  playing = setInterval(() => {
+    const t = $("t");
+    if (+t.value >= +t.max) { t.value = 0; } else { t.value = Math.min(+t.max, +t.value + Math.max(1, Math.round(trajectory.length / 600))); }
+    show(+t.value);
+  }, 16);
+};
+$("t").oninput = () => show(+$("t").value);
+$("showRobot").onchange = () => { scene.remove(...links, tool); if ($("showRobot").checked) scene.add(...links, tool); };
+$("processing").onchange = () => { fillVariants(); compute(); };
+$("variant").onchange = compute;
+$("setup").onchange = () => showSetup(+$("setup").value);
+for (const id of ["length", "width", "height"]) $(id).onchange = compute;
+
+$("processing").value = catalog.find((p) => p.variants.length).name;
+fillVariants();
+compute();
+</script>
+</body>
+</html>

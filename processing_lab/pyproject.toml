@@ -1,0 +1,20 @@
+[project]
+name = "processing_lab"
+version = "0.0.0"
+description = "Local helper: pick a processing, see its toolpaths and the IRB2600 following them."
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "compas_timber==3.0.0",
+    "compas_brep[occ]==0.4.2",
+    "compas_fab",
+    "compas_fab_native",
+    "compas_robots",
+    "wjim_lib",
+]
+
+[tool.uv]
+package = false
+environments = ["sys_platform == 'darwin'", "sys_platform == 'win32'"]
+
+[tool.uv.sources]
+wjim_lib = { path = "../wjim_lib", editable = true }
