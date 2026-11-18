@@ -11,7 +11,7 @@ Group **8** · one beam of the selected junction, clamped on the table, milled b
 | input | |
 |---|---|
 | `beam` | 0, 1, 2 … a beam of the junction |
-| `side` | which reference side faces up |
+| `side` | which reference side faces up · empty: the first setup |
 | `stepdown` | depth per pass (mm) |
 | `compute` | **press it** · nothing heavy runs before |
 | `t` | scrub the robot along the path |
@@ -20,14 +20,21 @@ Group **8** · one beam of the selected junction, clamped on the table, milled b
 
 ## Read the list
 
-`toolpaths` says what happens to every processing of that beam:
+The robot mills from above, so the beam is milled in **setups**: clamped one side up, milled, turned, clamped again.
+`toolpaths` lists them, and what is left to the saw or to you:
 
 ```text
-StepJointNotch: step notch, 858 frames
-StepJointNotch: step notch, 832 frames needs another setup (side 1 up)
+setup 1/2: side 0 up, 1300 frames  <- shown
+    Tenon: tenon from side 0, 30 mm deep, 1300 frames
+setup 2/2: side 2 up, 1300 frames
+    Tenon: tenon from side 2, the beam flipped, 30 mm deep, 1300 frames
+not milled:
+    JackRafterCut: saw ...
 ```
 
-One side per setup. *needs another setup* → set `side` and compute again.
+Set `side` to the next setup's side to see it on the table, and run each setup as its own program.
+Between setups, push the beam's reference corner back against the stop at the table's origin.
+With a `blank`, every setup mills the same blank.
 
 ## Before the real robot
 

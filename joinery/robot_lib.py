@@ -134,7 +134,7 @@ class MillingCell:
         Without a `side_index`, the side the first milled toolpath comes from goes up.
 
         Without a `blank_length`, the whole beam goes on the table, that side's reference corner on its origin.
-        With one, only a blank that long is milled: the part of the beam around what's milled (and `near`,
+        With one, only a blank that long is milled: the part of the beam around what's milled from every side (and `near`,
         a point such as the junction's location, so there is a blank before there are toolpaths). The blank
         starts `BLANK_MARGIN` before it, from the beam end it is closer to, and keeps that end if it reaches it.
         That end goes on the table's origin, the beam turned end for end if need be, so what's milled is close to
@@ -161,7 +161,8 @@ class MillingCell:
             placement = self.placement(beam, side_index)
             return placement, [f.transformed(placement) for f in frames], on_other_sides, blank
 
-        along = [side.to_local_coordinates(f.point)[0] for f in frames] + ([side.to_local_coordinates(near)[0]] if near is not None else [])
+        # around what's milled from every side, so each setup mills the same blank, the same way round
+        along = [side.to_local_coordinates(f.point)[0] for t in milled for f in t.frames] + ([side.to_local_coordinates(near)[0]] if near is not None else [])
         first, last = (min(along), max(along)) if along else (0.0, 0.0)
         flipped = (first + last) / 2 > full / 2  # what's milled is closer to the beam's end than to its start
         stub = max(beam.width, beam.height)  # an end closer than this to the cut holds the joint's own end cuts: keep it
@@ -188,6 +189,23 @@ class MillingCell:
             cuts.append(Plane(side.point + side.xaxis * end, side.xaxis).transformed(placement))
         blank = SimpleNamespace(start=start, end=end, cuts=cuts, note=note)
         return placement, [f.transformed(placement) for f in frames], on_other_sides, blank
+
+    def setups(self, beam, toolpaths, blank_length=None, near=None):
+        """The beam clamped once for every side it is milled from, in the order of its toolpaths: between two setups
+        it is turned and clamped again, that side up and its reference corner against the table's origin.
+
+        Returns
+        -------
+        list
+            One per setup: `side`, `toolpaths` milled from it, `placement`, `frames` in the cell and `blank`, as in `setup`.
+            Empty if nothing is milled.
+        """
+        result = []
+        for side in dict.fromkeys(t.ref_side_index for t in toolpaths if t.frames):
+            placement, frames, _, blank = self.setup(beam, toolpaths, side, blank_length, near)
+            on_side = [t for t in toolpaths if t.frames and t.ref_side_index == side]
+            result.append(SimpleNamespace(side=side, toolpaths=on_side, placement=placement, frames=frames, blank=blank))
+        return result
 
     def flange_frame(self, tool_frame):
         """The flange (`tool0`) frame that puts the bit's tip on `tool_frame`."""
@@ -343,6 +361,17 @@ if __name__ == "__main__":
         assert all(0 <= p[0] <= 600 and abs(p[1] - (60 if x > 1500 else 20)) < 1e-6 and abs(p[2] + 10) < 1e-6 for p in on_table), (x, on_table)
         assert all((f.point - cut.point).dot(cut.normal) < 0 for f in frames for cut in blank.cuts)
         assert None not in measured.solve(frames), x
+
+    # Self-check: milled from two sides, the beam is clamped twice, and both setups mill the same blank the same way round.
+    bottom = long_beam.ref_sides[2]
+    tip = lambda side, x: Frame(side.point + side.xaxis * x + side.yaxis * 20 - side.normal * 10, side.xaxis, -side.yaxis)  # noqa: E731
+    paths = [SimpleNamespace(frames=[tip(top, 2500.0)], ref_side_index=0), SimpleNamespace(frames=[], ref_side_index=1),
+             SimpleNamespace(frames=[tip(bottom, 2800.0)], ref_side_index=2)]
+    both = measured.setups(long_beam, paths, blank_length=600)
+    assert [s.side for s in both] == [0, 2] and [len(s.toolpaths) for s in both] == [1, 1]
+    assert len({(s.blank.start, s.blank.end) for s in both}) == 1 and both[0].blank.end == 2850.0, [s.blank.note for s in both]
+    assert all(0 <= measured.table_frame.to_local_coordinates(s.frames[0].point)[0] <= 600 for s in both)
+    assert measured.setups(long_beam, paths[1:2]) == []
 
     # Self-check: solving a tip frame the robot reaches gives a configuration that puts the tip there.
     cell = MillingCell()

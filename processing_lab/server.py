@@ -17,6 +17,7 @@ import json
 import os
 import sys
 import traceback
+from types import SimpleNamespace
 from http.server import BaseHTTPRequestHandler
 from http.server import HTTPServer
 
@@ -246,15 +247,15 @@ def run(length, width, height, name, index):
         geometry = beam.compute_elementgeometry(include_features=False).transformed(beam.transformation)
         result["debug"] = [f"no geometry for the processing, the beam is shown without it: {e}"]
     mesh, polylines = geometry.to_tesselation()
-    sides = list(dict.fromkeys(t.ref_side_index for t in paths)) or [0]
-    result["setups"] = [_setup(beam, mesh, polylines, paths, side) for side in sides]
+    setups = CELL.setups(beam, paths) or [SimpleNamespace(side=0, placement=CELL.placement(beam, 0), frames=[])]
+    result["setups"] = [_setup(mesh, polylines, setup) for setup in setups]
     return result
 
 
-def _setup(beam, mesh, polylines, paths, side):
-    placement, frames, _, _ = CELL.setup(beam, paths, side)
+def _setup(mesh, polylines, setup):
+    placement, frames = setup.placement, setup.frames
     result = {
-        "side": side,
+        "side": setup.side,
         "beam": _mesh(mesh, placement),
         "edges": [[round(x, 3) for p in pl.transformed(placement).points for x in p] for pl in polylines],
         "path": [[round(x, 3) for x in f.point] for f in frames],
