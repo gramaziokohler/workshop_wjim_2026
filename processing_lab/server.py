@@ -27,14 +27,19 @@ import compas_timber.fabrication as ctf  # noqa: E402
 import wjim_lib  # noqa: E402
 from compas.geometry import Line  # noqa: E402
 from compas.geometry import Point  # noqa: E402
+from compas.geometry import Polyline  # noqa: E402
 from compas.geometry import Scale  # noqa: E402
 from compas.geometry import Transformation  # noqa: E402
 from compas_robots import Configuration  # noqa: E402
 from compas_timber.elements import Beam  # noqa: E402
+from compas_timber.fabrication import BirdsMouth  # noqa: E402
 from compas_timber.fabrication import BTLxProcessing  # noqa: E402
+from compas_timber.fabrication import Contour  # noqa: E402
 from compas_timber.fabrication import Drilling  # noqa: E402
+from compas_timber.fabrication import FreeContour  # noqa: E402
 from compas_timber.fabrication import Lap  # noqa: E402
 from compas_timber.fabrication import Mortise  # noqa: E402
+from compas_timber.fabrication import Pocket  # noqa: E402
 from compas_timber.fabrication import StepJointNotch  # noqa: E402
 from compas_timber.fabrication import OrientationType  # noqa: E402
 from compas_timber.fabrication import StepShapeType  # noqa: E402
@@ -44,7 +49,10 @@ from robot_lib import MillingCell  # noqa: E402
 from toolpath_lib import toolpaths  # noqa: E402
 from wjim_lib import Chamfer  # noqa: E402
 from wjim_lib import HouseMortise  # noqa: E402
+from wjim_lib import LogHouseHalfLap  # noqa: E402
 from wjim_lib import Marking  # noqa: E402
+from wjim_lib import MillContour  # noqa: E402
+from wjim_lib import Planing  # noqa: E402
 
 PORT = 8000
 CELL = MillingCell()
@@ -52,6 +60,11 @@ CELL = MillingCell()
 
 def _sq(**kwargs):
     return Mortise(shape="square", **kwargs)
+
+
+def _outline(L, w, corners):
+    """A closed outline on side 0, its corners around the middle of the side, counterclockwise seen from outside."""
+    return Polyline([[0.5 * L + x, 0.5 * w + y, 0.0] for x, y in corners + corners[:1]])
 
 
 def _tenon(**kwargs):
@@ -134,6 +147,38 @@ VARIANTS = {
         ),
         ("all four edges, 5 mm", lambda L, w, h: Chamfer(depth=5.0)),
     ],
+    "Pocket": [
+        ("100 x 40, 25 deep", lambda L, w, h: Pocket(start_x=0.4 * L, start_y=20.0, start_depth=25.0, length=100.0, width=40.0)),
+        ("100 long, through the width, 20 deep", lambda L, w, h: Pocket(start_x=0.4 * L, start_y=0.0, start_depth=20.0, length=100.0, width=w)),
+        ("start side tilted 60° (undercut)", lambda L, w, h: Pocket(start_x=0.4 * L, start_y=20.0, start_depth=25.0, length=100.0, width=40.0, tilt_start_side=60.0)),
+    ],
+    "BirdsMouth": [
+        ("seat 45°, heel 135°, 30 deep", lambda L, w, h: BirdsMouth(start_x=0.5 * L, start_depth=30.0, depth=30.0, width=w)),
+        ("seat 60°, heel 150°, 25 deep", lambda L, w, h: BirdsMouth(start_x=0.5 * L, start_depth=25.0, depth=25.0, width=w, inclination_1=60.0, inclination_2=150.0)),
+        ("angle 70°, 20 deep, orientation end", lambda L, w, h: BirdsMouth(orientation=OrientationType.END, start_x=0.5 * L, start_depth=20.0, depth=20.0, width=w, angle=70.0)),
+    ],
+    "LogHouseHalfLap": [
+        ("80 wide, 30 deep from both sides", lambda L, w, h: LogHouseHalfLap(start_x=0.5 * L, length=80.0, depth_ref_side=30.0, depth_opp_side=30.0)),
+        ("80 wide, at 60°, 25 + 35 deep", lambda L, w, h: LogHouseHalfLap(start_x=0.5 * L, angle=60.0, length=80.0, depth_ref_side=25.0, depth_opp_side=35.0)),
+        ("only from side 0, 40 deep", lambda L, w, h: LogHouseHalfLap(start_x=0.5 * L, length=60.0, depth_ref_side=40.0, depth_opp_side=0.0)),
+        ("at the end of the beam", lambda L, w, h: LogHouseHalfLap(orientation=OrientationType.END, start_x=L - 30.0, length=80.0, depth_ref_side=30.0, depth_opp_side=30.0)),
+    ],
+    "Planing": [
+        ("side 0, 150 long, 3 mm", lambda L, w, h: Planing(start_x=0.4 * L, length=150.0, depth=3.0, start_limited=True, end_limited=True, plane_side_2=False, plane_side_3=False, plane_side_4=False)),
+        ("sides 0 and 2, 100 long, 8 mm", lambda L, w, h: Planing(start_x=0.4 * L, length=100.0, depth=8.0, start_limited=True, end_limited=True, plane_side_2=False, plane_side_4=False)),
+        ("side 1, the last 100 mm, 5 mm", lambda L, w, h: Planing(start_x=L - 100.0, length=100.0, depth=5.0, start_limited=True, plane_side_1=False, plane_side_3=False, plane_side_4=False)),
+    ],
+    "FreeContour": [
+        ("rectangle 100 x 40, inside removed, 20 deep", lambda L, w, h: FreeContour(Contour(_outline(L, w, [(-50, -20), (50, -20), (50, 20), (-50, 20)]), 20.0), counter_sink=True)),
+        ("L shape, inside removed, 15 deep (outline only)", lambda L, w, h: FreeContour(Contour(_outline(L, w, [(-50, -25), (50, -25), (50, 0), (0, 0), (0, 25), (-50, 25)]), 15.0), counter_sink=True)),
+        ("triangle, through, inside comes loose", lambda L, w, h: FreeContour(Contour(_outline(L, w, [(-30, -20), (30, -20), (0, 25)]), h), counter_sink=True, depth_bounded=False)),
+        ("open line across the side, tool centred, 10 deep", lambda L, w, h: FreeContour(Contour(Polyline([[0.5 * L - 30, 0, 0], [0.5 * L + 30, w, 0]]), 10.0), tool_position="center")),
+    ],
+    "MillContour": [
+        ("square 50 x 50, inside removed, 30 deep", lambda L, w, h: MillContour(Contour(_outline(L, w, [(-25, -25), (25, -25), (25, 25), (-25, 25)]), 30.0), counter_sink=True, tool_position="left")),
+        ("square 50 x 50, tool outside, 10 deep", lambda L, w, h: MillContour(Contour(_outline(L, w, [(-25, -25), (25, -25), (25, 25), (-25, 25)]), 10.0), tool_position="right")),
+        ("open U from the edge, tool inside it, 12 deep", lambda L, w, h: MillContour(Contour(Polyline([[0.5 * L - 30, 0, 0], [0.5 * L - 30, 30, 0], [0.5 * L + 30, 30, 0], [0.5 * L + 30, 0, 0]]), 12.0), tool_position="right")),
+    ],
 }
 
 
@@ -185,7 +230,7 @@ def run(length, width, height, name, index):
     label, make = VARIANTS[name][index]
     processing = make(length, *beam.get_dimensions_relative_to_side(0))
     beam.add_features(processing)
-    result = {"label": label, "params": {k: v for k, v in processing.__data__.items() if not isinstance(v, (list, dict))}}
+    result = {"label": label, "params": {k: v for k, v in processing.__data__.items() if isinstance(v, (str, int, float, bool, type(None)))}}
     try:
         paths = toolpaths(beam)
         result["note"] = "\n".join(t.note for t in paths)
@@ -194,8 +239,12 @@ def run(length, width, height, name, index):
         paths = []
         result["error"] = f"toolpath: {e}"
 
-    geometry = beam.compute_modelgeometry()
-    result["debug"] = [str(e) for e in beam.debug_info]
+    try:
+        geometry = beam.compute_modelgeometry()
+        result["debug"] = [str(e) for e in beam.debug_info]
+    except Exception as e:  # compas_timber can't model some processings (an open FreeContour): show the bare beam
+        geometry = beam.compute_elementgeometry(include_features=False).transformed(beam.transformation)
+        result["debug"] = [f"no geometry for the processing, the beam is shown without it: {e}"]
     mesh, polylines = geometry.to_tesselation()
     sides = list(dict.fromkeys(t.ref_side_index for t in paths)) or [0]
     result["setups"] = [_setup(beam, mesh, polylines, paths, side) for side in sides]

@@ -16,6 +16,11 @@ material. What gets a toolpath today:
   edges of the side facing up.
 - `Tenon`: in two setups, the beam flat on the table: the top half from the
   reference side, the bottom half with the beam flipped onto it. Two `Toolpath`s.
+- `BirdsMouth`: the V cleared like a `Pocket`, its sloped faces left in steps of a layer.
+- `LogHouseHalfLap`: two through laps, from the reference side and the beam flipped. Two `Toolpath`s.
+- `Planing`: each planed side faced, in a setup of its own.
+- `FreeContour`, `MillContour`: followed with the bit on its `tool_position` side, layer by layer;
+  a closed, convex, not-through contour whose inside is removed is cleared as a pocket.
 
 Cuts (`JackRafterCut`, `DoubleCut`, `StepJoint`) are listed as saw cuts, with
 what the saw needs: the 6 mm bit can't reach through a beam. Anything else is listed as "no toolpath
@@ -27,6 +32,7 @@ Runs in Rhino 8 (Python 3.9) and in plain Python.
 
 from __future__ import annotations
 
+import itertools
 import math
 
 from compas.geometry import Box
@@ -36,8 +42,14 @@ from compas.geometry import Point
 from compas.geometry import Vector
 from compas.geometry import intersection_line_plane
 from compas.geometry import intersection_plane_plane_plane
+from compas.geometry import offset_polygon
+from compas.geometry import offset_polyline
+from compas_timber.fabrication import AlignmentType
+from compas_timber.fabrication import BirdsMouth
 from compas_timber.fabrication import DoubleCut
 from compas_timber.fabrication import Drilling
+from compas_timber.fabrication import DualContour
+from compas_timber.fabrication import FreeContour
 from compas_timber.fabrication import JackRafterCut
 from compas_timber.fabrication import Lap
 from compas_timber.fabrication import Mortise
@@ -50,8 +62,11 @@ from compas_timber.fabrication import Tenon
 from wjim_lib import Chamfer
 from wjim_lib import ChamferExitType
 from wjim_lib import HouseMortise
+from wjim_lib import LogHouseHalfLap
 from wjim_lib import Marking
 from wjim_lib import MarkingStyleType
+from wjim_lib import Planing
+from wjim_lib import SawContour
 
 BIT_DIAMETER = 6.0  # mm, the bit on site
 CLEARANCE = 5.0  # mm between the bit and a beam edge it cuts through, so it goes in and out of the wood in the air
@@ -123,6 +138,16 @@ def toolpaths(beam, features=None, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe
                 how = f"from side {at}, the beam flipped" if from_bottom else f"from side {at}"
                 result.append(Toolpath(processing, frames, at, f"tenon {how}, {depth:.0f} mm deep, {len(frames)} frames"))
             continue
+        elif isinstance(processing, BirdsMouth):
+            frames, note = convex_toolpath(beam, birds_mouth_planes(beam, processing), side, bit_diameter, stepdown, safe_height, name="birds mouth")
+        elif isinstance(processing, (LogHouseHalfLap, Planing)):
+            volumes = log_half_lap_volumes(beam, processing) if isinstance(processing, LogHouseHalfLap) else planing_volumes(beam, processing)
+            for at, planes in volumes:
+                frames, note = convex_toolpath(beam, planes, at, bit_diameter, stepdown, safe_height, name=f"{'lap' if isinstance(processing, LogHouseHalfLap) else 'planing'} from side {at}")
+                result.append(Toolpath(processing, frames, at, note))
+            continue
+        elif isinstance(processing, FreeContour) and not isinstance(processing, SawContour):  # MillContour is one
+            frames, note = contour_toolpath(beam, processing, bit_diameter, stepdown, safe_height)
         elif isinstance(processing, SAW_CUTS):
             frames, note = [], saw_cut_note(beam, processing)
         else:
@@ -276,21 +301,54 @@ def step_notch_toolpath(beam, notch, bit_diameter=BIT_DIAMETER, stepdown=3.0, sa
     return frames
 
 
+def _face_planes(vertices, faces):
+    """The planes of a convex polyhedron's faces, their normals pointing out of it."""
+    centre = Point(*[sum(c) / len(vertices) for c in zip(*vertices)])
+    planes = []
+    for face in faces:
+        a, b, c = (Point(*vertices[i]) for i in face[:3])
+        normal = Vector(*(b - a).cross(c - a)).unitized()
+        planes.append(Plane(a, -normal if normal.dot(centre - a) > 0 else normal))
+    return planes
+
+
+def _beam_planes(beam):
+    """The six sides of the beam as planes, normals out of it: add them to bound a volume by the beam."""
+    return [Plane(side.point, side.normal) for side in beam.ref_sides]
+
+
+def _corners(planes):
+    """The corners of the convex volume inside all `planes` (normals pointing out of it)."""
+    corners = []
+    for p, q, r in itertools.combinations(planes, 3):
+        if abs(Vector(*p.normal).cross(q.normal).dot(r.normal)) < 1e-9:
+            continue  # two of them are parallel: no single corner
+        x = intersection_plane_plane_plane(p, q, r)
+        if all((Point(*x) - s.point).dot(s.normal) < 1e-4 for s in planes):
+            corners.append(Point(*x))
+    return corners
+
+
 def _volume(beam, processing):
-    """The convex volume `processing` removes, as (vertices, faces)."""
+    """The convex volume a `Pocket` or `Mortise` removes, as planes, normals out of it."""
     if isinstance(processing, Pocket):
         volume = processing.volume_from_params_and_element(beam)
-        return volume.vertices, volume.faces
+        return _face_planes(volume.vertices, volume.faces)
     # Mortise: the box its own volume_from_params_and_beam builds, without going through a Brep.
     frame = processing.frame_from_params_and_beam(beam)
     frame.translate((-frame.normal * processing.depth - frame.yaxis * processing.length) * 0.5)
-    return Box(processing.width, processing.length, processing.depth, frame).to_vertices_and_faces()
+    return _face_planes(*Box(processing.width, processing.length, processing.depth, frame).to_vertices_and_faces())
 
 
 def pocket_toolpath(beam, processing, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe_height=20.0):
-    """Clear the convex volume of a `Pocket` or `Mortise` with the bit square to its ref side, in zig-zag layers.
+    """Clear the convex volume of a `Pocket` or `Mortise` with the bit square to its ref side, see `convex_toolpath`."""
+    return convex_toolpath(beam, _volume(beam, processing), processing.ref_side_index, bit_diameter, stepdown, safe_height)
 
-    Every face of the volume is a half-space. At each depth, the bit's centre may go where its whole
+
+def convex_toolpath(beam, planes, side_index, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe_height=20.0, name="pocket"):
+    """Clear the convex volume inside `planes` (normals pointing out of it) with the bit square to side `side_index`, in zig-zag layers.
+
+    Every plane is a half-space. At each depth, the bit's centre may go where its whole
     disc is inside all of them, there and at the surface (so its shaft doesn't cut an overhang on the
     way down). A face flush with or outside a side of the beam is open: the bit runs past it by `CLEARANCE`.
 
@@ -298,14 +356,15 @@ def pocket_toolpath(beam, processing, bit_diameter=BIT_DIAMETER, stepdown=3.0, s
     -------
     tuple
         Bit tip positions, approach and retract included (empty if the bit can't get in from this side),
-        and the note: a face that hangs over the volume is an undercut the bit leaves standing.
+        and the note, starting with `name`: a face that hangs over the volume is an undercut the bit leaves
+        standing, a sloped one comes out in steps of a layer.
     """
     radius = bit_diameter / 2.0
     stepover = bit_diameter * 0.6
-    side = beam.ref_sides[processing.ref_side_index]
-    vertices, faces = _volume(beam, processing)
-    local = [Point(*side.to_local_coordinates(Point(*v))) for v in vertices]  # z out of the side, depth = -z
-    centre = Point(*[sum(c) / len(local) for c in zip(*local)])
+    side = beam.ref_sides[side_index]
+    local = [Point(*side.to_local_coordinates(c)) for c in _corners(planes)]  # z out of the side, depth = -z
+    if not local:
+        return [], f"{name}: nothing to mill, the volume is empty"
     beam_sides = []  # outward normal and offset of every side of the beam, in the same coordinates
     for s in beam.ref_sides:
         origin = Point(*side.to_local_coordinates(s.point))
@@ -314,17 +373,16 @@ def pocket_toolpath(beam, processing, bit_diameter=BIT_DIAMETER, stepdown=3.0, s
 
     # (a_u, a_v, a_w, b): inside where a_u*u + a_v*v <= b + a_w*depth, already offset for the bit
     constraints = []
-    undercut = False
-    for face in faces:
-        a, b, c = (local[i] for i in face[:3])
-        normal = Vector(*(b - a).cross(c - a)).unitized()
-        if normal.dot(centre - a) > 0:
-            normal = -normal
+    undercut = sloped = False
+    for plane in planes:
+        a = Point(*side.to_local_coordinates(plane.point))
+        normal = (Vector(*side.to_local_coordinates(plane.point + plane.normal)) - a).unitized()
         offset = normal.dot(a)
         in_plane = math.hypot(normal[0], normal[1])
         is_open = any(normal.dot(n) > 1 - 1e-6 and offset >= o - 1e-3 for n, o in beam_sides)
         margin = -(radius + CLEARANCE) if is_open else radius
         undercut = undercut or (not is_open and normal[2] > 1e-6)
+        sloped = sloped or (not is_open and 1e-6 < abs(normal[2]) < 1 - 1e-6)
         constraints.append((normal[0], normal[1], normal[2], offset - margin * in_plane))
 
     def interval(u, depth):
@@ -373,9 +431,127 @@ def pocket_toolpath(beam, processing, bit_diameter=BIT_DIAMETER, stepdown=3.0, s
             frames += layer_frames
             frames.append(Frame(last_point + above, layer_frames[-1].xaxis, layer_frames[-1].yaxis))
     if not frames:
-        return frames, "the bit can't get into it from this side"
-    note = f"pocket, {len(frames)} frames"
+        return frames, f"{name}: the bit can't get into it from this side"
+    note = f"{name}, {len(frames)} frames" + (f", sloped faces come out in {deepest / layers:.1f} mm steps" if sloped else "")
     return frames, note + (", UNDERCUT: a wall leans over it, the bit leaves that wedge" if undercut else "")
+
+
+def birds_mouth_planes(beam, notch):
+    """The V a `BirdsMouth` removes: its two faces, normals out of the V, and the beam's sides."""
+    side = beam.ref_sides[notch.ref_side_index]
+    ridge = notch._get_ridge_line_from_params_and_element(beam)
+    faces = notch.planes_from_params_and_element(beam)
+    ups = []  # each face's direction from the ridge up to the surface
+    for face in faces:
+        up = Vector(*ridge.direction.cross(face.normal)).unitized()
+        ups.append(up if up.dot(side.normal) > 0 else -up)
+    inside = Point(*ridge.midpoint) + ups[0] + ups[1]  # between the faces, in the V
+    planes = [Plane(f.point, -Vector(*f.normal) if (inside - f.point).dot(f.normal) > 0 else Vector(*f.normal)) for f in faces]
+    return planes + _beam_planes(beam)
+
+
+def log_half_lap_volumes(beam, lap):
+    """The two notches of a `LogHouseHalfLap`, each as (the side it is milled from, its planes)."""
+    side = beam.ref_sides[lap.ref_side_index]
+    height = beam.get_dimensions_relative_to_side(lap.ref_side_index)[1]
+    angle = math.radians(lap.angle)
+    shift = 1.0 / math.tan(angle) * (-1.0 if lap.orientation == OrientationType.START else 1.0)  # the walls' change in x per unit of y
+    half = 0.5 * lap.length / math.sin(angle)  # along the reference edge
+    wall = Vector(*(side.xaxis - side.yaxis * shift)).unitized()  # square to the walls, towards the end
+    walls = [Plane(side.point + side.xaxis * (lap.start_x + half), wall), Plane(side.point + side.xaxis * (lap.start_x - half), -wall)]
+    down = Vector(*(-side.normal))
+    volumes = []
+    if lap.length and lap.depth_ref_side:
+        volumes.append((lap.ref_side_index, walls + [Plane(side.point + down * lap.depth_ref_side, down)] + _beam_planes(beam)))
+    if lap.length and lap.depth_opp_side:
+        volumes.append(((lap.ref_side_index + 2) % 4, walls + [Plane(side.point + down * (height - lap.depth_opp_side), -down)] + _beam_planes(beam)))
+    return volumes
+
+
+def planing_volumes(beam, planing):
+    """The layers a `Planing` takes off, each as (the side it is milled from, its planes)."""
+    volumes = []
+    for index in range(4):
+        if not getattr(planing, f"plane_side_{index + 1}"):
+            continue
+        side = beam.ref_sides[index]
+        planes = _beam_planes(beam) + [Plane(side.point - side.normal * planing.depth, -side.normal)]
+        if planing.start_limited:
+            planes.append(Plane(side.point + side.xaxis * planing.start_x, -side.xaxis))
+        if planing.end_limited:
+            planes.append(Plane(side.point + side.xaxis * (planing.start_x + planing.length), side.xaxis))
+        volumes.append((index, planes))
+    return volumes
+
+
+def contour_toolpath(beam, contour, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe_height=20.0):
+    """Mill a `FreeContour` or a `MillContour` with the bit square to its ref side.
+
+    A closed contour whose inside is removed (`counter_sink`), not through and convex, is cleared as a
+    pocket. Any other contour is followed layer by layer, the bit on its `tool_position` side of it; an
+    open contour's ends on the edge of the side run out of the wood.
+
+    Returns
+    -------
+    tuple
+        Bit tip positions, approach and retract included, and the note: what the bit leaves standing.
+    """
+    shape = contour.contour_param_object
+    if isinstance(shape, DualContour) or any(abs(i) > 1e-6 for i in shape.inclination):
+        raise ValueError("Only contours with square walls (inclination 0) are milled for now.")
+    radius = bit_diameter / 2.0
+    side_index = contour.ref_side_index
+    side = beam.ref_sides[side_index]
+    width, height = beam.get_dimensions_relative_to_side(side_index)
+    # shortcut: the contour is taken to lie on the side (z = 0), as from_polyline_and_element makes it
+    xy = [[p[0], p[1], 0.0] for p in shape.polyline]
+    closed = shape.polyline.is_closed
+    deepest = shape.depth if contour.depth_bounded else height + CLEARANCE
+    down = Vector(*(-side.normal))
+
+    def world(p, depth=0.0):
+        return Point(*side.point) + Vector(*side.xaxis) * p[0] + Vector(*side.yaxis) * p[1] + down * depth
+
+    ring = [Point(*p) for p in (xy[:-1] if closed else xy)]
+    n = len(ring)
+    turns = [(ring[i] - ring[i - 1]).cross(ring[(i + 1) % n] - ring[i])[2] for i in range(n)]  # + where it turns left
+    if closed and contour.counter_sink and contour.depth_bounded and (min(turns) >= -1e-9 or max(turns) <= 1e-9):
+        sign = 1.0 if sum(turns) > 0 else -1.0  # counterclockwise: the outside is right of every edge
+        planes = []
+        for a, b in zip(ring, ring[1:] + ring[:1]):
+            out = (Vector(*side.xaxis) * (b[1] - a[1]) - Vector(*side.yaxis) * (b[0] - a[0])).unitized() * sign
+            planes.append(Plane(world(a), out))
+        planes.append(Plane(world([0, 0, 0], deepest), down))
+        return convex_toolpath(beam, planes + _beam_planes(beam), side_index, bit_diameter, stepdown, safe_height, name="contour pocket")
+
+    offset = {AlignmentType.LEFT: radius, AlignmentType.RIGHT: -radius}.get(contour.tool_position, 0.0)  # left is +, seen from outside the side
+    if closed:
+        path = offset_polygon(xy[:-1], offset) if offset else xy[:-1]
+        path = path + path[:1]
+    else:
+        path = offset_polyline(xy, offset) if offset else xy
+        for end, before in ((0, 1), (-1, -2)):  # an end on the side's edge runs out of the wood
+            x, y = xy[end][0], xy[end][1]
+            if min(x, beam.blank_length - x, y, width - y) < 1e-3:
+                out = (Vector(*path[end]) - Vector(*path[before])).unitized() * (radius + CLEARANCE)
+                path[end] = [path[end][0] + out[0], path[end][1] + out[1], 0.0]
+
+    def frame(p, depth):
+        return Frame(world(p, depth), side.xaxis, down.cross(side.xaxis))
+
+    frames = [frame(path[0], -safe_height)]
+    layers = max(1, int(math.ceil(deepest / stepdown)))
+    for layer in range(1, layers + 1):
+        run = path if closed or layer % 2 else path[::-1]  # an open contour goes back and forth
+        frames += [frame(p, deepest * layer / layers) for p in run]
+    frames.append(frame(run[-1], -safe_height))
+
+    note = f"contour, {len(frames)} frames"
+    if closed and not contour.depth_bounded:
+        note += ", through: the " + ("inside" if contour.counter_sink else "outside") + " comes loose"
+    elif closed:
+        note += ", only along it: the " + ("inside isn't cleared, it isn't convex" if contour.counter_sink else "rest of the outside stays")
+    return frames, note
 
 
 def _pocket(corner, along, across, down, length, width, top, bottom, bit_diameter, stepdown, safe_height):
@@ -788,3 +964,42 @@ if __name__ == "__main__":
                     elif s > 3.0 and not (s < 3.0 + 1e-6 or (s < 6.0 and (abs(y - y0) < 3.0 or abs(y - y1) < 3.0))):
                         assert any(reaches(c, s, y, d, 1e-3) for c in cuts), ("left standing", s, y, d)
     print("Tenon setups clear around the tenon, and only around it.")
+
+    # Self-check: birds mouths, half laps, planing and contour pockets never cut outside what they remove, and reach its bottom.
+    from compas.geometry import Polyline
+    from compas_timber.fabrication import Contour
+    from wjim_lib import MillContour
+
+    def cutting(beam, toolpath):  # (x, y, depth) below the side it's milled from, of every frame in the wood
+        side = beam.ref_sides[toolpath.ref_side_index]
+        return [(p[0], p[1], -p[2]) for p in (side.to_local_coordinates(f.point) for f in toolpath.frames) if -p[2] > 1e-6]
+
+    r = BIT_DIAMETER / 2
+    for notch in (BirdsMouth(start_x=300.0, start_depth=30.0, depth=30.0, width=80.0), BirdsMouth(start_x=300.0, start_depth=25.0, depth=25.0, width=80.0, inclination_1=60.0, inclination_2=150.0)):
+        beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(600, 0, 0)), width=80, height=120)
+        beam.add_features(notch)
+        (toolpath,) = toolpaths(beam)
+        faces = birds_mouth_planes(beam, notch)[:2]
+        assert all((f.point - p.point).dot(p.normal) <= 1e-6 for f in toolpath.frames for p in faces)
+        assert notch.start_depth - r - 3.0 < max(d for _, _, d in cutting(beam, toolpath)) <= notch.start_depth  # a flat bit stops short of the V's sharp bottom
+    beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(600, 0, 0)), width=80, height=120)
+    beam.add_features(LogHouseHalfLap(start_x=300.0, length=80.0, depth_ref_side=25.0, depth_opp_side=35.0))
+    for toolpath, depth in zip(toolpaths(beam), (25.0, 35.0)):
+        cut = cutting(beam, toolpath)
+        assert max(d for _, _, d in cut) == depth and all(260 + r - 1e-6 <= x <= 340 - r + 1e-6 for x, _, _ in cut)
+        assert min(y for _, y, _ in cut) < -r and max(y for _, y, _ in cut) > 80 + r  # through the width
+    beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(600, 0, 0)), width=80, height=120)
+    beam.add_features(Planing(start_x=200.0, length=100.0, depth=5.0, start_limited=True, end_limited=True, plane_side_2=False, plane_side_4=False))
+    assert [t.ref_side_index for t in toolpaths(beam)] == [0, 2]
+    for toolpath in toolpaths(beam):
+        cut = cutting(beam, toolpath)
+        assert max(d for _, _, d in cut) == 5.0 and all(200 + r - 1e-6 <= x <= 300 - r + 1e-6 for x, _, _ in cut)
+    beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(600, 0, 0)), width=80, height=120)
+    square = Polyline([[275, 15, 0], [325, 15, 0], [325, 65, 0], [275, 65, 0], [275, 15, 0]])
+    beam.add_features([MillContour(Contour(square, 20.0), counter_sink=True, tool_position="left"), FreeContour(Contour(square, 10.0), tool_position="right")])
+    pocket, outline = toolpaths(beam)
+    cut = cutting(beam, pocket)
+    assert max(d for _, _, d in cut) == 20.0 and all(275 + r - 1e-6 <= x <= 325 - r + 1e-6 and 15 + r - 1e-6 <= y <= 65 - r + 1e-6 for x, y, _ in cut)
+    cut = cutting(beam, outline)
+    assert max(d for _, _, d in cut) == 10.0 and all(abs(max(abs(x - 300), abs(y - 40)) - (25 + r)) < 1e-6 for x, y, _ in cut)  # on the square, a bit's radius out
+    print("Birds mouths, half laps, planing and contours stay inside what they remove, and reach its bottom.")
