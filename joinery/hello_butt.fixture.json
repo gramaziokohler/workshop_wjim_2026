@@ -1,0 +1,26 @@
+{
+  "$schema": "./fixture.schema.json",
+  "beams": [
+    {
+      "centerline": [
+        [-250.0, -550.0, 0.0],
+        [0.0, 0.0, 0.0]
+      ],
+      "width": 80.0,
+      "height": 160.0
+    },
+    {
+      "centerline": [
+        [-400.0, 0.0, 0.0],
+        [400.0, 0.0, 0.0]
+      ],
+      "width": 80.0,
+      "height": 160.0
+    }
+  ],
+  "role_bindings": {
+    "main_beam": 0,
+    "cross_beam": 1
+  },
+  "params": {}
+}
