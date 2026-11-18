@@ -54,7 +54,7 @@ Fixture → `__init__(roles…, params…)` → `add_extensions()` → `add_feat
    uv run python joinery/check_joint.py joinery/<name>.py
    ```
    The check runs the same pipeline as the editor and lists each beam's processings and what happens to each one:
-   frames (milled), `saw at …` (sawn by hand), or `no toolpath for this processing yet`.
+   the side it's milled from and how many frames it takes, or `no toolpath for this processing yet`.
    Loop until it prints `OK`. Then tell the student what to look at in the viewport.
 7. **One module, several junctions.** A good joint also works at the other junctions it is
    assigned to (`<junction>: <name>` in Grasshopper). If a number only works for this one junction,
@@ -62,26 +62,38 @@ Fixture → `__init__(roles…, params…)` → `add_extensions()` → `add_feat
 
 ## Processings
 
-The robot has a 6 mm bit, so inside corners stay round (r = 3 mm).
+The robot mills all of these with a 6 mm bit, so inside corners stay round (r = 3 mm) and an
+undercut is left standing. Nothing is sawn. The check's note says how each processing is milled.
 
-| Processing | Constructor | Robot |
+| Processing | Constructor | How it's milled |
 |---|---|---|
-| `Lap` | `from_plane_and_beam(plane, beam, length, depth, ref_side_index)`, `from_volume_and_beam(volume, beam)` | milled |
-| `Pocket` | `from_volume_and_element(volume, element, ref_side_index=None)` | milled (convex) |
-| `Mortise` | `from_frame_and_beam(frame, beam, start_depth, length, width, depth, ref_side_index)` | milled |
-| `Tenon` | `from_plane_and_beam(plane, beam, length, width, height, ref_side_index)` | milled, two setups |
-| `StepJointNotch` | `from_plane_and_beam(plane, beam, step_depth, strut_height, ref_side_index)` | milled (step shape) |
-| `BirdsMouth` | `from_planes_and_element(planes, element)` | milled |
-| `Drilling` | `from_line_and_element(line, element, diameter)` | milled (helix) |
-| `FreeContour`, `wjim_lib.MillContour` | `from_polyline_and_element(polyline, element, depth, interior)` | milled |
-| `wjim_lib.HouseMortise` | like `Mortise` | milled |
+| **Cuts** | | |
+| `JackRafterCut` | `from_plane_and_beam(plane, beam, ref_side_index)` | what's cut off is cleared, from the side it leans to |
+| `DoubleCut` | `from_planes_and_beam(planes, beam)` | same |
+| `StepJoint` | `from_plane_and_beam(plane, beam, step_depth, heel_depth, ref_side_index)` | same, often from two sides |
+| `LongitudinalCut` | `from_plane_and_beam(plane, beam, start_x, length, depth)` | same |
+| `wjim_lib.TriangleCut` | `from_planes_and_element(planes, element, ref_side_index)` | same |
+| `wjim_lib.RidgeValleyCut`, `wjim_lib.HipValleyRafterNotch` | `Cls(**btlx_params)`, read the class docstring | same |
+| **Pockets and holes** | | |
+| `Lap` | `from_plane_and_beam(plane, beam, length, depth, ref_side_index)`, `from_volume_and_beam(volume, beam)` | pocket |
+| `Pocket` | `from_volume_and_element(volume, element, ref_side_index=None)` | pocket (convex) |
+| `Mortise`, `wjim_lib.HouseMortise` | `from_frame_and_beam(frame, beam, start_depth, length, width, depth, ref_side_index)` | pocket |
+| `Slot` | `from_plane_and_beam(plane, beam, depth, thickness)` | pocket |
+| `StepJointNotch` | `from_plane_and_beam(plane, beam, step_depth, strut_height, ref_side_index)` | step notch (step shape only) |
+| `BirdsMouth` | `from_planes_and_element(planes, element)` | cleared |
+| `Drilling` | `from_line_and_element(line, element, diameter)` | helix |
+| `FreeContour`, `wjim_lib.MillContour` | `from_polyline_and_element(polyline, element, depth, interior)` | along the contour |
+| **Tenons** | | |
+| `Tenon` | `from_plane_and_beam(plane, beam, length, width, height, ref_side_index)` | two setups, the beam flipped |
+| `wjim_lib.House` | like `Tenon` | two setups, leaves the nested tenon standing |
+| **Surface** | | |
 | `wjim_lib.Marking` | `from_line_and_element(line, element, ref_side_index)` | engraved |
-| `wjim_lib.LogHouseHalfLap`, `Planing`, `Chamfer` | `Cls(**btlx_params)`, read the class docstring | milled |
-| `JackRafterCut`, `DoubleCut`, `StepJoint` | `from_plane_and_beam(plane, beam, …)` | **sawn by hand**, the check prints angles |
+| `Text` | `Text(**btlx_params)`, read the class docstring | engraved along its strokes |
+| `wjim_lib.Chamfer`, `wjim_lib.Planing`, `wjim_lib.LogHouseHalfLap` | `Cls(**btlx_params)`, read the class docstring | a setup per side |
 
-Import the first group from `compas_timber.fabrication` and the `wjim_lib.` ones from `wjim_lib`.
-Anything else in `compas_timber.fabrication` or `wjim_lib` is a valid BTLx processing, but it has no toolpath yet.
-Tell the student this before you use one.
+Import the plain names from `compas_timber.fabrication` and the `wjim_lib.` ones from `wjim_lib`.
+Anything else in `compas_timber.fabrication` or `wjim_lib` is a valid BTLx processing, but it has no toolpath yet
+(the check says "no toolpath for this processing yet"). Tell the student this before you use one.
 
 ## Limits of the workshop setup
 
