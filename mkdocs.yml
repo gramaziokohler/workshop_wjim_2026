@@ -1,4 +1,4 @@
-# Preview: uv run mkdocs serve
+# Preview: uv run zensical serve (Zensical reads this mkdocs.yml as is)
 site_name: With Joints in Mind
 site_description: NCYU workshop, 23-27.11.2026 - from a timber structure to a robot-milled joint.
 copyright: Gramazio Kohler Research, ETH Zürich · National Chiayi University, Taiwan

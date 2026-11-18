@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-docs = ["mkdocs-material"]
+docs = ["zensical"]
 
 [tool.uv]
 package = false
