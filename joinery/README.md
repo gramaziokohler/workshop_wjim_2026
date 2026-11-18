@@ -36,6 +36,7 @@ Open `joinery.gh` (Rhino units: **millimetres**). The canvas reads left to right
    The robot runs `tool0` in `wobj0`: the program holds the flange frames of the tool we simulate.
 
 `corner_node.py` is a worked example: the joint for the four corners.
+`hello_butt.py` is the first one to open: two beams, one cut, in three steps to uncomment.
 
 Working with a coding agent? Point it at `../skills/write-a-joint/SKILL.md` (or copy that folder
 into your agent's skills folder, e.g. `.claude/skills/`).
