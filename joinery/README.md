@@ -23,8 +23,8 @@ Open `joinery.gh` (Rhino units: **millimetres**). The canvas reads left to right
    is computed until you press `compute`, so picking junctions stays instant;
    until you press it, the last path stays, grey.
    `blank` (mm) mills a piece that long instead of the whole beam: the part around the
-   junction, its end nearest the junction on the table's origin (the beam turned end for end
-   if need be). The parts that are cut away are drawn in `offcut`. The toolpaths don't change,
+   junction, cropped at the table's origin, towards the robot, and its end nearest the junction
+   pointing away from it (the beam turned end for end if need be). The parts that are cut away are drawn in `offcut`. The toolpaths don't change,
    only where the beam sits.
 
 9. **To the robot**: write the solved path to a program (`MillingCell.program()`), then send it

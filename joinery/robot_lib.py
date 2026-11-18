@@ -45,7 +45,7 @@ HOME = [0.0, 0.0, 0.0, 0.0, math.pi / 2, 0.0]
 
 # The cell stands next to the design (y = -3000) rather than inside it.
 ROBOT_FRAME = Frame(Point(0, -3000, 0), Vector(1, 0, 0), Vector(0, 1, 0))
-TABLE_FRAME = Frame(Point(1100, -3000, 400), Vector(1, 0, 0), Vector(0, 1, 0))
+TABLE_FRAME = Frame(Point(800, -3000, 400), Vector(1, 0, 0), Vector(0, 1, 0))
 
 MM_PER_M = 1000.0
 BLANK_MARGIN = 50.0  # mm of the beam left before what's milled, where the blank is cut
@@ -137,8 +137,8 @@ class MillingCell:
         With one, only a blank that long is milled: the part of the beam around what's milled from every side (and `near`,
         a point such as the junction's location, so there is a blank before there are toolpaths). The blank
         starts `BLANK_MARGIN` before it, from the beam end it is closer to, and keeps that end if it reaches it.
-        That end goes on the table's origin, the beam turned end for end if need be, so what's milled is close to
-        the robot; the rest of the beam is cut away.
+        The other end, where it is cropped, goes on the table's origin, the beam turned end for end if need be, so the
+        crop is always at the same place, towards the robot, and what's milled faces away from it; the rest of the beam is cut away.
 
         Returns
         -------
@@ -178,9 +178,9 @@ class MillingCell:
 
         width = beam.get_dimensions_relative_to_side(side_index)[0]
         if flipped:
-            on_origin = Frame(side.point + side.xaxis * end + side.yaxis * width, -side.xaxis, -side.yaxis)
-        else:
             on_origin = Frame(side.point + side.xaxis * start, side.xaxis, side.yaxis)
+        else:
+            on_origin = Frame(side.point + side.xaxis * end + side.yaxis * width, -side.xaxis, -side.yaxis)
         placement = Transformation.from_frame_to_frame(on_origin, self.table_frame)
         cuts = []
         if start > 1e-6:
@@ -328,12 +328,12 @@ if __name__ == "__main__":
     assert frame_along(path, 0.0)[0].point == path[0].point and frame_along(path, 1.0)[0].point == path[-1].point
 
     # Self-check: the table frame from three measured points.
-    a, b, c = Point(1100, 0, 400), Point(1200, 0, 400), Point(1100, 100, 400)
+    a, b, c = Point(800, 0, 400), Point(900, 0, 400), Point(800, 100, 400)
     measured = MillingCell.from_measured_points(a, b, c)
     assert measured.table_frame.point == TABLE_FRAME.point and measured.table_frame.xaxis == TABLE_FRAME.xaxis
     moved = MillingCell.from_measured_points(a, b, c, robot_frame=Frame(Point(10, 20, 0), Vector(0, 1, 0), Vector(-1, 0, 0)))
-    assert moved.table_frame.point.distance_to_point(Point(10, 1120, 400)) < 1e-9
-    sloppy = MillingCell.from_measured_points(a, b, Point(1105, 100, 401)).table_frame
+    assert moved.table_frame.point.distance_to_point(Point(10, 820, 400)) < 1e-9
+    sloppy = MillingCell.from_measured_points(a, b, Point(805, 100, 401)).table_frame
     assert abs(sloppy.xaxis.dot(sloppy.yaxis)) < 1e-9 and sloppy.xaxis.dot(Vector(1, 0, 0)) > 1 - 1e-9
 
     # Self-check: the beam's reference corner for the side that goes up lands on the table frame.
@@ -346,8 +346,8 @@ if __name__ == "__main__":
         corner = beam.ref_sides[side_index].transformed(placement)
         assert corner.point.distance_to_point(measured.table_frame.point) < 1e-6 and corner.normal.dot(measured.table_frame.normal) > 1 - 1e-9
 
-    # Self-check: a blank of a long beam has its end nearest the joint on the table's origin, the joint within reach and
-    # the right way round, and every cut facing away from it.
+    # Self-check: a blank of a long beam is cropped on the table's origin, its end nearest the joint away from the robot,
+    # the joint within reach and the right way round, and every cut facing away from it.
     long_beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(3000, 0, 0)), width=80, height=120)
     top = long_beam.ref_sides[0]
     for x, kept_end in ((0.0, True), (100.0, True), (1200.0, False), (2900.0, True)):
@@ -357,8 +357,9 @@ if __name__ == "__main__":
         assert abs(blank.end - blank.start - 600) < 1e-6 and len(blank.cuts) == (1 if kept_end else 2), blank.note
         on_table = [measured.table_frame.to_local_coordinates(f.point) for f in frames]
         assert (blank.start == 0.0 or blank.end == 3000.0) == kept_end, (x, blank.note)
-        assert kept_end or min(p[0] for p in on_table) == BLANK_MARGIN, (x, on_table)
-        assert all(0 <= p[0] <= 600 and abs(p[1] - (60 if x > 1500 else 20)) < 1e-6 and abs(p[2] + 10) < 1e-6 for p in on_table), (x, on_table)
+        assert any(abs(measured.table_frame.to_local_coordinates(cut.point)[0]) < 1e-6 for cut in blank.cuts), (x, blank.note)
+        assert kept_end or abs(max(p[0] for p in on_table) - (600 - BLANK_MARGIN)) < 1e-6, (x, on_table)
+        assert all(0 <= p[0] <= 600 and abs(p[1] - (20 if x > 1500 else 60)) < 1e-6 and abs(p[2] + 10) < 1e-6 for p in on_table), (x, on_table)
         assert all((f.point - cut.point).dot(cut.normal) < 0 for f in frames for cut in blank.cuts)
         assert None not in measured.solve(frames), x
 
