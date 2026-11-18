@@ -19,3 +19,6 @@ __pycache__/
 
 # docs
 site/
+
+# claude code (per-machine settings, worktrees)
+.claude/
