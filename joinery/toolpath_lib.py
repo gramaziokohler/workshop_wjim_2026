@@ -6,7 +6,7 @@ material. What gets a toolpath today:
 - `Lap`: a pocket, cleared in zig-zag lines, layer by layer.
 - `StepJointNotch`: cleared with the bit square to its seat, the long face
   the strut sits on.
-- `Pocket`, `Mortise`: any convex volume, cleared in zig-zag layers with the bit
+- `Pocket`, `Mortise`, `Slot`: any convex volume, cleared in zig-zag layers with the bit
   square to the ref side. Inside corners stay round, at the bit's radius.
 - `HouseMortise`: a closed pocket, zig-zag along its long side, then the mortise
   nested in it; the corners come out rounded to the bit's radius.
@@ -16,14 +16,16 @@ material. What gets a toolpath today:
   edges of the side facing up.
 - `Tenon`: in two setups, the beam flat on the table: the top half from the
   reference side, the bottom half with the beam flipped onto it. Two `Toolpath`s.
+  A `House` is one, and the tenon nested in it is cleared around after it.
+- `JackRafterCut`, `DoubleCut`, `LongitudinalCut` (unlimited): the offcut cleared like a `Pocket`, from the
+  ref side, or from the opposite side if the face leans over the offcut. A convex `DoubleCut` has two.
 - `BirdsMouth`: the V cleared like a `Pocket`, its sloped faces left in steps of a layer.
 - `LogHouseHalfLap`: two through laps, from the reference side and the beam flipped. Two `Toolpath`s.
 - `Planing`: each planed side faced, in a setup of its own.
 - `FreeContour`, `MillContour`: followed with the bit on its `tool_position` side, layer by layer;
   a closed, convex, not-through contour whose inside is removed is cleared as a pocket.
 
-Cuts (`JackRafterCut`, `DoubleCut`, `StepJoint`) are listed as saw cuts, with
-what the saw needs: the 6 mm bit can't reach through a beam. Anything else is listed as "no toolpath
+A `StepJoint` is listed as a saw cut, with what the saw needs. Anything else is listed as "no toolpath
 yet" - that list is the honest answer to "can we mill this joint?".
 
 Adapted from the CAADRIA 2026 workshop's `lib_extra_toolpath_v2.py`.
@@ -52,15 +54,18 @@ from compas_timber.fabrication import DualContour
 from compas_timber.fabrication import FreeContour
 from compas_timber.fabrication import JackRafterCut
 from compas_timber.fabrication import Lap
+from compas_timber.fabrication import LongitudinalCut
 from compas_timber.fabrication import Mortise
 from compas_timber.fabrication import OrientationType
 from compas_timber.fabrication import Pocket
+from compas_timber.fabrication import Slot
 from compas_timber.fabrication import StepJoint
 from compas_timber.fabrication import StepJointNotch
 from compas_timber.fabrication import StepShapeType
 from compas_timber.fabrication import Tenon
 from wjim_lib import Chamfer
 from wjim_lib import ChamferExitType
+from wjim_lib import House
 from wjim_lib import HouseMortise
 from wjim_lib import LogHouseHalfLap
 from wjim_lib import Marking
@@ -71,7 +76,8 @@ from wjim_lib import SawContour
 BIT_DIAMETER = 6.0  # mm, the bit on site
 CLEARANCE = 5.0  # mm between the bit and a beam edge it cuts through, so it goes in and out of the wood in the air
 MARK_DEPTH = 1.0  # mm, how deep a Marking is engraved
-SAW_CUTS = (JackRafterCut, DoubleCut, StepJoint)
+SAW_CUTS = (StepJoint,)
+MILLED_CUTS = (JackRafterCut, DoubleCut, LongitudinalCut)
 CHAMFER_EDGES = ("12", "23", "34", "41")  # Chamfer's edge flags, edge i joins ref sides i and i + 1
 
 
@@ -119,7 +125,7 @@ def toolpaths(beam, features=None, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe
         elif isinstance(processing, HouseMortise):  # before Mortise, it is one
             frames = house_mortise_toolpath(beam, processing, bit_diameter, stepdown, safe_height)
             note = f"house pocket, {len(frames)} frames"
-        elif isinstance(processing, (Pocket, Mortise)):
+        elif isinstance(processing, (Pocket, Mortise, Slot)):
             frames, note = pocket_toolpath(beam, processing, bit_diameter, stepdown, safe_height)
         elif isinstance(processing, Drilling):
             frames = drilling_toolpath(beam, processing, bit_diameter, stepdown, safe_height)
@@ -131,12 +137,20 @@ def toolpaths(beam, features=None, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe
             frames = chamfer_toolpath(beam, processing, side, bit_diameter, stepdown, safe_height)
             elsewhere = [name for i, name in enumerate(CHAMFER_EDGES) if getattr(processing, "chamfer_edge_" + name) and side not in (i, (i + 1) % 4)]
             note = f"chamfer facing, {len(frames)} frames" + (f"; edges {', '.join(elsewhere)} need the beam turned" if elsewhere else "")
-        elif isinstance(processing, Tenon):
+        elif isinstance(processing, Tenon):  # a House is one
+            name, make = ("house", house_toolpath) if isinstance(processing, House) else ("tenon", tenon_toolpath)
             for from_bottom in (False, True):
-                frames, depth = tenon_toolpath(beam, processing, from_bottom, bit_diameter, stepdown, safe_height)
+                frames, depth = make(beam, processing, from_bottom, bit_diameter, stepdown, safe_height)
                 at = (side + 2) % 4 if from_bottom else side
                 how = f"from side {at}, the beam flipped" if from_bottom else f"from side {at}"
-                result.append(Toolpath(processing, frames, at, f"tenon {how}, {depth:.0f} mm deep, {len(frames)} frames"))
+                result.append(Toolpath(processing, frames, at, f"{name} {how}, {depth:.0f} mm deep, {len(frames)} frames"))
+            continue
+        elif isinstance(processing, MILLED_CUTS):
+            for planes in cut_volumes(beam, processing):
+                # a face leaning over the offcut is an undercut from the ref side: mill it with the beam flipped
+                at = side if all(Vector(*p.normal).dot(beam.ref_sides[side].normal) < 1e-6 for p in planes) else (side + 2) % 4
+                frames, note = convex_toolpath(beam, planes + _beam_planes(beam), at, bit_diameter, stepdown, safe_height, name=f"offcut from side {at}")
+                result.append(Toolpath(processing, frames, at, note))
             continue
         elif isinstance(processing, BirdsMouth):
             frames, note = convex_toolpath(beam, birds_mouth_planes(beam, processing), side, bit_diameter, stepdown, safe_height, name="birds mouth")
@@ -330,9 +344,9 @@ def _corners(planes):
 
 
 def _volume(beam, processing):
-    """The convex volume a `Pocket` or `Mortise` removes, as planes, normals out of it."""
-    if isinstance(processing, Pocket):
-        volume = processing.volume_from_params_and_element(beam)
+    """The convex volume a `Pocket`, `Slot` or `Mortise` removes, as planes, normals out of it."""
+    if isinstance(processing, (Pocket, Slot)):
+        volume = processing.volume_from_params_and_element(beam) if isinstance(processing, Pocket) else processing.volume_from_params_and_beam(beam)
         return _face_planes(volume.vertices, volume.faces)
     # Mortise: the box its own volume_from_params_and_beam builds, without going through a Brep.
     frame = processing.frame_from_params_and_beam(beam)
@@ -341,8 +355,8 @@ def _volume(beam, processing):
 
 
 def pocket_toolpath(beam, processing, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe_height=20.0):
-    """Clear the convex volume of a `Pocket` or `Mortise` with the bit square to its ref side, see `convex_toolpath`."""
-    return convex_toolpath(beam, _volume(beam, processing), processing.ref_side_index, bit_diameter, stepdown, safe_height)
+    """Clear the convex volume of a `Pocket`, `Slot` or `Mortise` with the bit square to its ref side, see `convex_toolpath`."""
+    return convex_toolpath(beam, _volume(beam, processing), processing.ref_side_index, bit_diameter, stepdown, safe_height, name=type(processing).__name__.lower())
 
 
 def convex_toolpath(beam, planes, side_index, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe_height=20.0, name="pocket"):
@@ -434,6 +448,18 @@ def convex_toolpath(beam, planes, side_index, bit_diameter=BIT_DIAMETER, stepdow
         return frames, f"{name}: the bit can't get into it from this side"
     note = f"{name}, {len(frames)} frames" + (f", sloped faces come out in {deepest / layers:.1f} mm steps" if sloped else "")
     return frames, note + (", UNDERCUT: a wall leans over it, the bit leaves that wedge" if undercut else "")
+
+
+def cut_volumes(beam, cut):
+    """The offcuts of a `JackRafterCut`, a `DoubleCut` or an unlimited `LongitudinalCut`, each as its cut planes,
+    normals out of it, into the part that stays. Bound them by the beam's sides to get the volume."""
+    if isinstance(cut, DoubleCut):
+        planes = cut.planes_from_params_and_beam(beam)
+        return [planes] if cut.is_concave else [[p] for p in planes]  # concave: one notch between both; convex: each cuts off its own corner
+    if isinstance(cut, LongitudinalCut) and (cut.start_limited or cut.end_limited or cut.depth_limited):
+        raise ValueError("Only unlimited longitudinal cuts are milled for now (compas_timber can't model the limited ones either).")
+    plane = cut.plane_from_params_and_beam(beam)
+    return [[Plane(plane.point, -Vector(*plane.normal))]]  # the normal points into the offcut
 
 
 def birds_mouth_planes(beam, notch):
@@ -758,13 +784,26 @@ def _tenon_box(beam, tenon):
     return tenon.start_x, pointing, (y0, y1), (tenon.start_depth, tenon.start_depth + tenon.length), beam.blank_length if pointing > 0 else 0.0
 
 
-def tenon_toolpath(beam, tenon, from_bottom=False, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe_height=20.0):
+def house_toolpath(beam, house, from_bottom=False, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe_height=20.0):
+    """Clear around a `House`, then around the tenon nested in it, which stands on the house's end face, see `tenon_toolpath`."""
+    nested = house.subprocessings or []
+    if any(type(t) is not Tenon for t in nested):
+        raise ValueError(f"Only a plain nested Tenon is milled with the {bit_diameter:.0f} mm bit.")
+    frames, deepest = tenon_toolpath(beam, house, from_bottom, bit_diameter, stepdown, safe_height, past_tip=not nested)
+    for tenon in nested:
+        more, depth = tenon_toolpath(beam, tenon, from_bottom, bit_diameter, stepdown, safe_height)
+        frames, deepest = frames + more, max(deepest, depth)
+    return frames, deepest
+
+
+def tenon_toolpath(beam, tenon, from_bottom=False, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe_height=20.0, past_tip=True):
     """Clear around a `Tenon` from its reference side, or `from_bottom`, the beam flipped onto it.
 
     Each side clears its half of the beam, split at the beam's middle (or the tenon's top or bottom, if the
     middle misses it): the full width down to the tenon, then beside it, and past its tip to the end of the
     timber. Lines run along the beam, in from the open end and back out, so the bit only steps over in the air.
     The inner corners at the shoulder come out rounded to the bit's radius; the tenon's own edges stay sharp.
+    Without `past_tip`, the wood past the tip is left for what stands there (a `House`'s nested tenon).
 
     Returns
     -------
@@ -786,7 +825,7 @@ def tenon_toolpath(beam, tenon, from_bottom=False, bit_diameter=BIT_DIAMETER, st
     if from_bottom:
         origin, down = origin + down * height, -down
     outside = (end - shoulder) * pointing + radius + CLEARANCE
-    beyond_tip = (end - shoulder) * pointing > tenon.height + 1e-6
+    beyond_tip = past_tip and (end - shoulder) * pointing > tenon.height + 1e-6
 
     def spread(a, b):
         """Positions from a to b, at most a stepover apart."""
@@ -1003,3 +1042,43 @@ if __name__ == "__main__":
     cut = cutting(beam, outline)
     assert max(d for _, _, d in cut) == 10.0 and all(abs(max(abs(x - 300), abs(y - 40)) - (25 + r)) < 1e-6 for x, y, _ in cut)  # on the square, a bit's radius out
     print("Birds mouths, half laps, planing and contours stay inside what they remove, and reach its bottom.")
+
+    # Self-check: milled cuts stay in their offcut and reach through the beam, slots stay in the slot, a house leaves its nested tenon standing.
+    from compas_timber.fabrication import DoubleCut, JackRafterCut, LongitudinalCut, Slot
+
+    def offcut_toolpaths(cut):
+        beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(600, 0, 0)), width=80, height=120)
+        beam.add_features(cut)
+        return beam, toolpaths(beam)
+
+    for cut, count in (
+        (JackRafterCut(orientation=OrientationType.END, start_x=560.0), 1),
+        (JackRafterCut(orientation=OrientationType.END, start_x=540.0, angle=60.0, inclination=70.0), 1),
+        (JackRafterCut(orientation=OrientationType.END, start_x=540.0, inclination=110.0), 1),
+        (DoubleCut(orientation=OrientationType.END, start_x=560.0, start_y=40.0, angle_1=135.0, angle_2=45.0), 2),
+        (DoubleCut(orientation=OrientationType.END, start_x=560.0, start_y=40.0, angle_1=45.0, angle_2=135.0), 1),
+        (LongitudinalCut(start_y=20.0, inclination=45.0), 1),
+    ):
+        beam, paths = offcut_toolpaths(cut)
+        assert len(paths) == count and all(t.frames and "UNDERCUT" not in t.note for t in paths), paths
+        for planes, toolpath in zip(cut_volumes(beam, cut), paths):
+            up = beam.ref_sides[toolpath.ref_side_index].normal
+            assert all((f.point - p.point).dot(p.normal) <= -r * math.sqrt(1 - Vector(*p.normal).dot(up) ** 2) + 1e-6 for f in toolpath.frames for p in planes)  # the bit's disc in the offcut
+            assert abs(max(d for _, _, d in cutting(beam, toolpath)) - 120.0 * (toolpath.ref_side_index in (0, 2)) - 80.0 * (toolpath.ref_side_index in (1, 3))) < 1e-6 or isinstance(cut, LongitudinalCut)
+    beam, paths = offcut_toolpaths(JackRafterCut(orientation=OrientationType.END, start_x=540.0, inclination=70.0))
+    assert paths[0].ref_side_index == 2, "a face leaning over the offcut is milled from the opposite side"
+    beam, (toolpath,) = offcut_toolpaths(Slot(start_x=300.0, start_y=0.0, length=80.0, depth=50.0, thickness=10.0))
+    cut = cutting(beam, toolpath)
+    assert all(abs(x - 300.0) <= 5 - r + 1e-6 for x, _, _ in cut) and abs(max(d for _, _, d in cut) - 50.0) < 1e-6
+    beam, (toolpath,) = offcut_toolpaths(Slot(start_x=300.0, start_y=0.0, length=80.0, depth=50.0, thickness=4.0))
+    assert not toolpath.frames
+    nested = Tenon(orientation=OrientationType.END, start_x=580.0, start_y=40.0, start_depth=40.0, length=40.0, width=20.0, height=20.0, shape="square")
+    house = House(orientation=OrientationType.END, start_x=560.0, start_y=40.0, start_depth=20.0, length=80.0, width=60.0, height=20.0, shape="square", subprocessings=[nested])
+    beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(600, 0, 0)), width=80, height=120)
+    beam.add_features(house)
+    for toolpath in toolpaths(beam):
+        side = beam.ref_sides[0]
+        for f in toolpath.frames:
+            x, y, z = side.to_local_coordinates(f.point)
+            assert not (580 - r + 1e-6 < x < 600 + r - 1e-6 and 30 - r + 1e-6 < y < 50 + r - 1e-6 and 40 + 1e-6 < -z < 80 - 1e-6), ("cuts the nested tenon", x, y, z)
+    print("Cuts clear their offcuts, slots stay in the slot, a house leaves its nested tenon standing.")
