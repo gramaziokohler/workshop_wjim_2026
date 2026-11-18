@@ -35,11 +35,15 @@ from compas_timber.elements import Beam  # noqa: E402
 from compas_timber.fabrication import BirdsMouth  # noqa: E402
 from compas_timber.fabrication import BTLxProcessing  # noqa: E402
 from compas_timber.fabrication import Contour  # noqa: E402
+from compas_timber.fabrication import DoubleCut  # noqa: E402
 from compas_timber.fabrication import Drilling  # noqa: E402
 from compas_timber.fabrication import FreeContour  # noqa: E402
+from compas_timber.fabrication import JackRafterCut  # noqa: E402
 from compas_timber.fabrication import Lap  # noqa: E402
+from compas_timber.fabrication import LongitudinalCut  # noqa: E402
 from compas_timber.fabrication import Mortise  # noqa: E402
 from compas_timber.fabrication import Pocket  # noqa: E402
+from compas_timber.fabrication import Slot  # noqa: E402
 from compas_timber.fabrication import StepJointNotch  # noqa: E402
 from compas_timber.fabrication import OrientationType  # noqa: E402
 from compas_timber.fabrication import StepShapeType  # noqa: E402
@@ -48,6 +52,7 @@ from robot_lib import MM_PER_M  # noqa: E402
 from robot_lib import MillingCell  # noqa: E402
 from toolpath_lib import toolpaths  # noqa: E402
 from wjim_lib import Chamfer  # noqa: E402
+from wjim_lib import House  # noqa: E402
 from wjim_lib import HouseMortise  # noqa: E402
 from wjim_lib import LogHouseHalfLap  # noqa: E402
 from wjim_lib import Marking  # noqa: E402
@@ -107,6 +112,42 @@ VARIANTS = {
         ("80 x 30, 50 long, near the top", lambda L, w, h: _tenon(start_x=L - 50.0, start_y=w / 2, start_depth=10.0, length=min(80.0, h - 20.0), width=30.0, height=50.0)),
         ("full height, 30 wide, flush with side 1", lambda L, w, h: _tenon(start_x=L - 40.0, start_y=15.0, start_depth=0.0, length_limited_top=False, length_limited_bottom=False, length=h, width=30.0, height=40.0)),
         ("at the start of the beam", lambda L, w, h: _tenon(orientation=OrientationType.START, start_x=40.0, start_y=w / 2, start_depth=(h - 60.0) / 2, length=60.0, width=20.0, height=40.0)),
+    ],
+    "House": [
+        ("80 x 60, 20 long, centred", lambda L, w, h: House(orientation=OrientationType.END, start_x=L - 20.0, start_y=w / 2, start_depth=(h - 80.0) / 2, length=80.0, width=min(60.0, w - 10), height=20.0, shape="square")),
+        (
+            "80 x 60 x 20, tenon 50 x 20 x 30 on it",
+            lambda L, w, h: House(
+                orientation=OrientationType.END,
+                start_x=L - 50.0,
+                start_y=w / 2,
+                start_depth=(h - 80.0) / 2,
+                length=80.0,
+                width=min(60.0, w - 10),
+                height=20.0,
+                shape="square",
+                subprocessings=[_tenon(start_x=L - 30.0, start_y=w / 2, start_depth=(h - 50.0) / 2, length=50.0, width=20.0, height=30.0)],
+            ),
+        ),
+    ],
+    "JackRafterCut": [
+        ("square, 40 from the end", lambda L, w, h: JackRafterCut(orientation=OrientationType.END, start_x=L - 40.0)),
+        ("angle 60°", lambda L, w, h: JackRafterCut(orientation=OrientationType.END, start_x=L - 60.0, angle=60.0)),
+        ("inclination 70° (from the opposite side)", lambda L, w, h: JackRafterCut(orientation=OrientationType.END, start_x=L - 60.0, inclination=70.0)),
+        ("inclination 110°", lambda L, w, h: JackRafterCut(orientation=OrientationType.END, start_x=L - 60.0, inclination=110.0)),
+    ],
+    "DoubleCut": [
+        ("pointed end, 45° + 135°", lambda L, w, h: DoubleCut(orientation=OrientationType.END, start_x=L - w / 2, start_y=w / 2, angle_1=135.0, angle_2=45.0)),
+        ("V notch at the end, 45° + 135°", lambda L, w, h: DoubleCut(orientation=OrientationType.END, start_x=L - w / 2, start_y=w / 2, angle_1=45.0, angle_2=135.0)),
+    ],
+    "LongitudinalCut": [
+        ("edge off at 45°, 20 in", lambda L, w, h: LongitudinalCut(start_y=20.0, inclination=45.0)),
+        ("limited (not milled)", lambda L, w, h: LongitudinalCut(start_x=0.3 * L, start_y=20.0, inclination=45.0, start_limited=True, end_limited=True, length=200.0)),
+    ],
+    "Slot": [
+        ("10 thick, 50 deep, across the beam", lambda L, w, h: Slot(start_x=0.5 * L, start_y=0.0, length=w, depth=50.0, thickness=10.0)),
+        ("6 thick (bit wide), 30 deep, angle 60°", lambda L, w, h: Slot(start_x=0.5 * L, start_y=0.0, angle=60.0, length=w, depth=30.0, thickness=6.0)),
+        ("4 thick (too narrow)", lambda L, w, h: Slot(start_x=0.5 * L, start_y=0.0, length=w, depth=30.0, thickness=4.0)),
     ],
     "HouseMortise": [
         ("house 80 x 60, 10 deep", lambda L, w, h: HouseMortise(start_x=0.5 * L, start_y=w / 2, length=80.0, width=min(60.0, w - 10), depth=10.0, shape="square")),
