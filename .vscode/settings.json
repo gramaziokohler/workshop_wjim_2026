@@ -1,0 +1,4 @@
+{
+  "jointEditor.extraPaths": ["${workspaceFolder}/wjim_lib/src"],
+  "python.analysis.extraPaths": ["${workspaceFolder}/wjim_lib/src"]
+}
