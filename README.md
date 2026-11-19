@@ -10,6 +10,7 @@ Write the joint for it in code. Mill it with a robot.
 - `00_install.ghx`: open once in Rhino 8 to build the `wjim_ncyu2026` environment.
 - `joint-editor-0.1.0.vsix`: the joint editor, for VS Code (`code --install-extension joint-editor-0.1.0.vsix --force`).
   Built from the `joint_editor` repo: `npm ci && npm run package` in its `extension/`, then copy the `.vsix` here.
+- `reset_joint_editor.ps1`: Windows, VS Code closed. Removes the joint editor and its environments, reinstalls the `.vsix` (`powershell -ExecutionPolicy Bypass -File reset_joint_editor.ps1`).
 - [`joinery/`](joinery/README.md): the Grasshopper definition, toolpaths and the milling cell.
 - [`wjim_lib/`](wjim_lib/README.md): the workshop's extension of `compas_timber`.
 - `docs/`: the tutorial site (`uv run zensical serve`).
