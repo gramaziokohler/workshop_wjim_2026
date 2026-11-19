@@ -34,9 +34,19 @@ It builds one Python environment, **`wjim_ncyu2026`**, and prints what it instal
 
 ## 3 · VS Code: install the joint editor
 
-```bash
-code --install-extension joint-editor-0.1.0.vsix --force
-```
+=== "macOS"
+
+    ```bash
+    code --install-extension joint-editor-0.1.0.vsix --force
+    ```
+
+=== "Windows (PowerShell)"
+
+    ```powershell
+    code.cmd --install-extension joint-editor-0.1.0.vsix --force
+    ```
+
+Or skip the terminal: in the Extensions view, **⋯ → Install from VSIX…** and pick the file.
 
 Then <kbd>Cmd</kbd>/<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> → **Developer: Reload Window**.
 
@@ -56,4 +66,5 @@ The extension downloads its own Python and `compas_timber`. When the status bar 
     | Rhino reinstalls over and over / venv broken | close Rhino, delete `~/.rhinocode/py39-rh8/site-envs/wjim_ncyu2026-*`, open `00_install.ghx` again |
     | `No module named 'wjim_lib'` | open `00_install.ghx` again, restart Rhino |
     | Reinstalling the `.vsix` does nothing | `--force`, then **Reload Window** |
+    | Windows: `code --install-extension …` just opens a new VS Code window | use `code.cmd` instead of `code`, or **⋯ → Install from VSIX…** in the Extensions view |
     | Joint file full of unresolved imports | accept the editor's offer to use its environment |
