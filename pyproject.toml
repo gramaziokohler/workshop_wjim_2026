@@ -22,3 +22,8 @@ environments = ["sys_platform == 'darwin'", "sys_platform == 'win32'"]
 
 [tool.uv.sources]
 wjim_lib = { path = "wjim_lib", editable = true }
+
+# Pylance reads this too: the joint editor's environment has no wjim_lib. Not in .vscode/settings.json,
+# which the Python Environments extension rewrites when an interpreter is selected.
+[tool.pyright]
+extraPaths = ["wjim_lib/src"]
