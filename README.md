@@ -1,4 +1,4 @@
-![With Joints in Mind](images/GKR_With-Joints-in-Mind_Oxblood-T1_DIN_banner.svg)
+![With Joints in Mind](docs/assets/GKR_With-Joints-in-Mind_Oxblood-T1_DIN_banner.svg)
 
 # With Joints in Mind
 
