@@ -4,7 +4,14 @@
 
 Group **8** · one beam of the selected junction, clamped on the table, milled by the IRB2600.
 
-![beam → side → compute → t → unreachable](assets/diagrams/toolpath.svg)
+<div class="flow" style="--cols: 5" aria-label="Toolpaths, in five steps: beam, side, compute, t, unreachable">
+  <div class="flow-box"><span class="flow-n">1</span><b><code>beam</code></b><span>which beam of the junction</span></div>
+  <div class="flow-box"><span class="flow-n">2</span><b><code>side</code></b><span>reference side facing up (0–3)</span></div>
+  <div class="flow-box flow-yellow"><span class="flow-n">3</span><b class="rt-yellow"><code>compute</code></b><span>press it · nothing runs before</span></div>
+  <div class="flow-box flow-yellow"><span class="flow-n">4</span><b><code>t</code></b><span>scrub 0 → 1, the robot follows</span></div>
+  <div class="flow-box"><span class="flow-n">5</span><b><code>unreachable</code></b><span>empty? good. Not? change side</span></div>
+</div>
+<p class="flow-caption">6 mm bit · one side per setup · the beam's reference corner sits where Calibration says</p>
 
 ![Group 8 in Grasshopper: Toolpaths, Robot and Calibration](assets/shots/gh_fabrication.png)
 

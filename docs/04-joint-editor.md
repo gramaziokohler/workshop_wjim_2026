@@ -9,7 +9,14 @@ running your code against the exported beams. Type, and it redraws.
 
 ## What runs
 
-![Fixture → __init__ → add_extensions → add_features → processings](assets/diagrams/joint_flow.svg)
+<div class="flow flow-down" aria-label="What runs: Fixture, __init__, add_extensions, add_features, BTLx processings">
+  <div class="flow-box flow-pink"><b>Fixture</b><span>the beams, <code>role_bindings</code>, <code>params</code></span></div>
+  <div class="flow-box flow-cyan"><b><code>__init__()</code></b><span><code>edge_a, edge_b, post</code>, <code class="flow-hi">step_depth=15.0</code></span></div>
+  <div class="flow-box flow-cyan"><b><code>add_extensions()</code></b><span>lengthen blanks that must reach past the joint</span></div>
+  <div class="flow-box flow-cyan"><b><code>add_features()</code></b><span>put processings on the beams</span></div>
+  <div class="flow-box flow-yellow"><b>BTLx</b><span><code>StepJoint</code>, <code>StepJointNotch</code>, <code>Lap</code>, <code>Drilling</code> …</span></div>
+</div>
+<p class="flow-caption">one Run = Fixture in → geometry out · runs again as you type</p>
 
 ## The module you get
 
@@ -59,7 +66,7 @@ def add_features(self):
 2. Draws the frame in the viewport. Does nothing in Grasshopper.
 3. The processing becomes a cut on the beam, and later a toolpath.
 
-![The post node, ghosted](assets/joint_render.png){ width="70%" }
+![The corner it builds: the post runs up past both edges, each stepped into it](assets/shots/corner.png){ width="560" }
 
 ## Tools in the viewport
 

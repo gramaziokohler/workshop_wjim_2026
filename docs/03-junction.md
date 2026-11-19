@@ -26,7 +26,12 @@ Group **5** · **Export Junction**:
 2. `reach` → how much of each beam to take along (mm)
 3. press **`export`**
 
-![Export writes two files, VS Code opens, saving brings it back](assets/diagrams/files.svg)
+<div class="flow flow-down" aria-label="Export writes two files, VS Code opens, saving brings it back">
+  <div class="flow-box"><b>Export Junction</b><span><code>name</code> <code>corner_node</code> · <code>reach</code> <code>600</code> · press <b class="rt-pink">export</b></span></div>
+  <div class="flow-box flow-pink"><b>two files</b><span><code>corner_node.fixture.json</code>: the beams, cropped and centred. <span class="rt-pink">Rewritten on every export.</span><br><code>corner_node.py</code>: a joint module to start from. <span class="flow-hi">Written once, then it's yours.</span></span></div>
+  <div class="flow-box flow-cyan"><b>VS Code</b><span>opens by itself, the viewport in a tab beside the code</span></div>
+  <div class="flow-box"><b>Custom Joints</b><span>assign <code>0: corner_node</code> · save in VS Code → Grasshopper re-solves</span></div>
+</div>
 
 ![Export Junction with name, reach and the export button](assets/shots/gh_export_junction.png){ width="560" }
 

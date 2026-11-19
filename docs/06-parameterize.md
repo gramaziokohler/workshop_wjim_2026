@@ -11,7 +11,14 @@ Your joint works at one corner. Does it work at all four?
 4: corner_node
 ```
 
-![One module, four corners](assets/diagrams/parametric.svg)
+<div class="flow-box flow-cyan flow-source"><b><code>corner_node.py</code></b><span>one module</span></div>
+<div class="flow flow-from" aria-label="One module, four corners: J0, J1, J3, J4">
+  <div class="flow-box"><svg viewBox="-60 -42 135 92" aria-hidden="true"><line x1="0" y1="0" x2="0" y2="45" stroke="#f8ebe6" stroke-width="7" stroke-linecap="square"/><line x1="0" y1="0" x2="60" y2="-16" stroke="#ffc23d" stroke-width="5"/><line x1="0" y1="0" x2="-45" y2="-22" stroke="#ff5fa8" stroke-width="5"/></svg><b>J0</b></div>
+  <div class="flow-box"><svg viewBox="-60 -42 135 92" aria-hidden="true"><line x1="0" y1="0" x2="0" y2="45" stroke="#f8ebe6" stroke-width="7" stroke-linecap="square"/><line x1="0" y1="0" x2="60" y2="16" stroke="#ffc23d" stroke-width="5"/><line x1="0" y1="0" x2="-45" y2="-22" stroke="#ff5fa8" stroke-width="5"/></svg><b>J1</b></div>
+  <div class="flow-box"><svg viewBox="-60 -42 135 92" aria-hidden="true"><line x1="0" y1="0" x2="0" y2="45" stroke="#f8ebe6" stroke-width="7" stroke-linecap="square"/><line x1="0" y1="0" x2="60" y2="-16" stroke="#ffc23d" stroke-width="5"/><line x1="0" y1="0" x2="-45" y2="22" stroke="#ff5fa8" stroke-width="5"/></svg><b>J3</b></div>
+  <div class="flow-box"><svg viewBox="-60 -42 135 92" aria-hidden="true"><line x1="0" y1="0" x2="0" y2="45" stroke="#f8ebe6" stroke-width="7" stroke-linecap="square"/><line x1="0" y1="0" x2="60" y2="16" stroke="#ffc23d" stroke-width="5"/><line x1="0" y1="0" x2="-45" y2="22" stroke="#ff5fa8" stroke-width="5"/></svg><b>J4</b></div>
+</div>
+<p class="flow-caption">same code · different angles, lengths, sections · read them from the beams, don't type them</p>
 
 That's the test: **one module, several junctions.** If one of them breaks, something was typed that should have been asked.
 

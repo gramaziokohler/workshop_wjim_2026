@@ -8,7 +8,7 @@ theme:
   palette:
     scheme: slate
   font:
-    text: Barlow
+    text: Roboto
     code: Roboto Mono
   features:
     - navigation.footer

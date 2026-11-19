@@ -19,7 +19,13 @@ Write the joint for it in code. Mill it with a robot.
 
 ## The round trip
 
-![Grasshopper, joint editor and robot](assets/diagrams/roundtrip.svg)
+<div class="roundtrip" aria-label="The round trip: Grasshopper, the joint editor and the robot">
+  <div class="flow-box rt-gh"><b>RHINO · GRASSHOPPER</b><span><code>joinery.gh</code></span><span>decides <b>where</b>: beams, rules, junctions</span><span class="flow-step">01 install · 02 model</span></div>
+  <div class="rt-go rt-go1"><span class="to rt-pink">03 export junction</span><span class="back">05 save = update</span></div>
+  <div class="flow-box flow-cyan rt-editor"><b>VS CODE · JOINT EDITOR</b><span><code>corner_node.py</code></span><span>decides <b>how</b>: cuts, as BTLx processings</span><span class="flow-step">04 write · 06 parameterize</span></div>
+  <div class="rt-go rt-go2"><span class="to rt-yellow">07 toolpaths</span></div>
+  <div class="flow-box flow-yellow rt-robot"><b>ROBOT · IRB2600</b><span>6 mm milling bit</span><span>one beam, one side per setup</span></div>
+</div>
 
 ## Seven steps
 
