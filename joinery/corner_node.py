@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from itertools import combinations
 
+from compas.geometry import Frame
 from compas.geometry import Plane
 from compas.geometry import Point
 from compas.geometry import centroid_points
@@ -103,10 +104,11 @@ class CornerNodeJoint(Joint):
             self._location = Point(*centroid_points(points))
         return self._location
 
-    def side_facing(self, beam: Beam, other: Beam) -> int:
-        """The index of `beam`'s reference side that faces `other`."""
+    def side_facing(self, beam: Beam, other: Beam) -> Frame:
+        """The reference side of `beam` that faces `other`."""
         incidence = beam_ref_side_incidence(other, beam, ignore_ends=True)
-        return min(incidence, key=incidence.get)
+        index = min(incidence, key=incidence.get)
+        return beam.ref_sides[index]
 
     def side_against(self, beam: Beam, vector) -> int:
         """The index of `beam`'s reference side whose normal points most against `vector`."""
@@ -124,15 +126,16 @@ class CornerNodeJoint(Joint):
         post_ends = [self.post.extension_to_plane(self.top_of(edge)) for edge in self.edges]
         self.post.add_blank_extension(max(s for s, _ in post_ends), max(e for _, e in post_ends), self.guid)
         for edge in self.edges:
-            far_face = self.post.opp_side(self.side_facing(self.post, edge))
+            post_side = self.post.ref_sides.index(self.side_facing(self.post, edge))
+            far_face = self.post.opp_side(post_side)
             edge.add_blank_extension(*edge.extension_to_plane(far_face), self.guid)
 
     def add_features(self) -> None:
         """Step each edge into its face of the post."""
         self.features = []
         for role, edge in zip(("edge_a", "edge_b"), self.edges):
-            post_side = self.side_facing(self.post, edge)
-            post_face = self.post.ref_sides[post_side]
+            post_face = self.side_facing(self.post, edge)
+            post_side = self.post.ref_sides.index(post_face)  # the notch is given by its index
             edge_side = self.side_against(edge, post_face.normal)
             _, edge_height = edge.get_dimensions_relative_to_side(edge_side)
             debug.show(post_face, f"post face for {role}")

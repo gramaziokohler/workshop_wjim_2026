@@ -51,8 +51,7 @@ The worked example, `joinery/corner_node.py`: each edge steps into its face of t
 ```python
 def add_features(self):
     for edge in self.edges:
-        post_side = self.side_facing(self.post, edge)  # (1)!
-        post_face = self.post.ref_sides[post_side]
+        post_face = self.side_facing(self.post, edge)  # (1)!
         edge_side = self.side_against(edge, post_face.normal)
         debug.show(post_face, "post face")  # (2)!
 

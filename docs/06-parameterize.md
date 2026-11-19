@@ -27,14 +27,14 @@ That's the test: **one module, several junctions.** If one of them breaks, somet
 === "modelled"
 
     ```python
-    post_side = 1           # true at J0 only
+    post_face = self.post.ref_sides[1]  # true at J0 only
     depth = 15.0            # whatever the beam
     ```
 
 === "parametric"
 
     ```python
-    post_side = self.side_facing(self.post, edge)
+    post_face = self.side_facing(self.post, edge)
     _, height = edge.get_dimensions_relative_to_side(edge_side)
     ```
 

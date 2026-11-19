@@ -38,7 +38,7 @@ Fixture → `__init__(roles…, params…)` → `add_extensions()` → `add_feat
    processing: no Brep booleans and no meshes. The geometry is the result of the processings.
 3. **Ask, don't type.** Never hard-code a side index, a dimension or a coordinate that
    comes from this one junction. Ask the beams instead:
-   - `self.side_facing(beam, other)`: the side of `beam` that faces `other`.
+   - `self.side_facing(beam, other)`: the side of `beam` that faces `other`, as a Frame.
    - `self.side_against(beam, vector)`, `beam_ref_side_incidence_with_vector`: the side that faces against a direction.
    - `beam.ref_sides[i]` (a Frame), `beam.opp_side(i)`, `beam.get_dimensions_relative_to_side(i)` → `(width, height)`.
    - `self.get_beam_direction_towards_joint(beam)`, `self.location`, `beam.centerline`.
