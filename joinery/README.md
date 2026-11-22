@@ -28,11 +28,10 @@ Open `joinery.gh` (Rhino units: **millimetres**). The canvas reads left to right
    only where the beam sits.
 
 `corner_node.py` is a worked example: the joint for the four corners.
-`hello_butt.py` is the first one to open: two beams, one cut, in three steps to uncomment.
 `hello_joint.gh` is the same round trip without the design or the robot: ten L corners, each turned
 another way. Export one, write its joint, then switch `everywhere` on to put it on every pair:
 a joint that was modelled for one pair goes wrong on the others, a parametric one doesn't.
-`hello_joint.py` is that joint, an L butt with a milled lap, in seven steps to uncomment.
+`hello_joint.py` is that joint, and the first one to open: an L butt with a milled lap, in seven steps to uncomment.
 
 Working with a coding agent? Point it at `../skills/write-a-joint/SKILL.md` (or copy that folder
 into your agent's skills folder, e.g. `.claude/skills/`).
