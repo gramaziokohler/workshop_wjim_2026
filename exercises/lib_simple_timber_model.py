@@ -21,16 +21,16 @@ class TimberModelCreator:
     3. SOLVING: Calculating the geometry of those connections (Processing).
     """
 
-    def __init__(self, lines: list[Line], beam_width: float = 0.08, beam_height: float = 0.10):
+    def __init__(self, lines: list[Line], beam_width: float = 80.0, beam_height: float = 100.0):
         self.lines = lines
         self.timber_model = TimberModel()
         self.beam_width = beam_width
         self.beam_height = beam_height
         self._rules = []
-        self.tolerance = 0.05  # The maximum distance between lines to consider them as "touching"
+        self.tolerance = 50.0  # The maximum distance between lines to consider them as "touching" (mm)
 
     @classmethod
-    def from_mesh(cls, mesh: Mesh, beam_width: float = 0.08, beam_height: float = 0.10):
+    def from_mesh(cls, mesh: Mesh, beam_width: float = 80.0, beam_height: float = 100.0):
         """
         Helper method to look at a Mesh and treat every edge as a potential beam.
         """
