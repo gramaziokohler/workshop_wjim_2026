@@ -27,14 +27,6 @@ Open `joinery.gh` (Rhino units: **millimetres**). The canvas reads left to right
    pointing away from it (the beam turned end for end if need be). The parts that are cut away are drawn in `offcut`. The toolpaths don't change,
    only where the beam sits.
 
-9. **To the robot**: write the solved path to a program (`MillingCell.program()`), then send it
-   from a terminal, outside Rhino:
-   ```bash
-   docker compose -f robot/docker-compose.yml up -d   # the RRC driver; ROBOT_IP=<ip> for RobotStudio
-   uv run send_to_robot.py program.json --dry-run     # check it, then without --dry-run
-   ```
-   The robot runs `tool0` in `wobj0`: the program holds the flange frames of the tool we simulate.
-
 `corner_node.py` is a worked example: the joint for the four corners.
 `hello_butt.py` is the first one to open: two beams, one cut, in three steps to uncomment.
 `hello_joint.gh` is the same round trip without the design or the robot: ten L corners, each turned
@@ -56,8 +48,7 @@ into your agent's skills folder, e.g. `.claude/skills/`).
 | `check_joint.py` | runs a joint module against its Fixture outside VS Code and Rhino, with its toolpaths (`uv run python joinery/check_joint.py joinery/corner_node.py`) |
 | `toolpath_lib.py` | toolpaths from BTLx processings (`python toolpath_lib.py` checks itself) |
 | `robot_lib.py` | the milling cell and the robot's inverse kinematics (`python robot_lib.py` checks itself) |
-| `send_to_robot.py` | sends a program to the robot over COMPAS RRC (`uv run`, needs nothing installed) |
-| `robot/` | the ABB IRB2600-12/1.65 model, and the RRC driver (`docker-compose.yml`) |
+| `robot/` | the ABB IRB2600-12/1.65 model |
 
 ## Setup
 
