@@ -122,8 +122,10 @@ class InternalNodeJoint(Joint):
 
         from compas.geometry import Plane
 
-        lap = Lap.from_plane_and_beam(
-            Plane.from_frame(side), self.rafter, length=length, depth=depth
-        )
+        plane = Plane.from_frame(side)
+        offset = 17.9  # 0.0..20.0
+        plane.point -= side.zaxis * offset
+        debug.show(plane, "lap plane")
+        lap = Lap.from_plane_and_beam(plane, self.rafter, length=length, depth=depth)
 
         self.post.add_feature(cut)
