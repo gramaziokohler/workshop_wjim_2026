@@ -74,6 +74,27 @@ When the status bar says **compas_timber 3.0.2**, you're set.
 
 ![VS Code status bar: compas_timber 3.0.2 · release](assets/shots/statusbar.png){ width="320" }
 
+## 5 · Later: pull our updates
+
+We push fixes and new files during the workshop. To get them, open the **Source Control** view
+(<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>) → **⋯ → Pull**.
+
+??? note "From a terminal instead"
+    ```bash
+    git pull
+    ```
+
+Edited files of your own? Commit them first: in **Source Control**, type a message and click
+**✓ Commit**, then **Pull**. Git merges our changes into yours.
+
+After pulling, redo whatever the update touched (we'll say which):
+
+| The update changed… | Then |
+|---|---|
+| `joint-editor-0.1.0.vsix` | step 3 again: install with `--force`, then **Reload Window** |
+| the Rhino environment | step 2 again: open `00_install.ghx`, restart Rhino |
+| anything else | nothing to do |
+
 ??? failure "Something's off?"
     | Symptom | Fix |
     |---|---|
