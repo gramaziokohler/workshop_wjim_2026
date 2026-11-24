@@ -38,7 +38,7 @@ class CornerNodeJoint(Joint):
 1. Filled in from the junction you exported.
 2. One argument per beam, named after its category. Annotated numbers are your parameters.
 3. Make beams longer where they must reach past the joint.
-4. **Your work.** Create BTLx processings and add them to the beams.
+4. **Your work.** Create BTLx [processings](b-processings.md) and add them to the beams.
 
 !!! abstract "First: write it in words"
     The module's docstring asks you what the joint does, in carpentry terms.

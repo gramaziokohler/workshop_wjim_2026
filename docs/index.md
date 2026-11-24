@@ -93,4 +93,11 @@ Write the joint for it in code. Mill it with a robot.
 
     [:octicons-arrow-right-24: Processing lab](a-processing-lab.md)
 
+-   **Processings**
+
+    ---
+    Every cut the robot can mill, with a picture.
+
+    [:octicons-arrow-right-24: Processings](b-processings.md)
+
 </div>

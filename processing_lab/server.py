@@ -24,7 +24,8 @@ A helper for writing toolpaths. The toolpaths come from
     open http://localhost:8000
 
 To support another processing: write its toolpath in `toolpath_lib.py`, then
-add a few variants of it to `VARIANTS` below.
+add a few variants of it to `VARIANTS` below, its picture with `shots.py` and
+a section to `docs/b-processings.md`.
 """
 
 import faulthandler

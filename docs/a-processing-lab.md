@@ -40,7 +40,7 @@ When the terminal says `Processing lab on http://localhost:8000`, open [localhos
 | | |
 |---|---|
 | **Beam** | length, width, height (mm) |
-| **Processing**, **Variant** | what is cut. Grey: no variants yet |
+| **Processing**, **Variant** | what is cut. Grey: no variants yet ([all of them](b-processings.md)) |
 | **Setup** | which side faces up, if there is more than one |
 | **▶** | run the robot along the toolpath |
 

@@ -78,6 +78,7 @@ body { background: linear-gradient(170deg, var(--wjim-ground-2) 0, var(--wjim-gr
 /* Step cards: one neon edge each, like the poster's beams */
 .md-typeset .grid.cards > ul > li { border: 1px solid #4a2530; background: #1d0710; }
 .md-typeset .grid.cards > ul > li:hover { border-color: var(--wjim-cyan); box-shadow: none; }
+.md-typeset .grid.cards pre code { white-space: pre-wrap; }
 
 .md-typeset .admonition, .md-typeset details { background: #1d0710; border-width: 0 0 0 2px; box-shadow: none; }
 .md-typeset kbd { background: var(--wjim-ground-2); color: var(--wjim-ink); box-shadow: none; }
