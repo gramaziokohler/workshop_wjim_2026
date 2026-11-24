@@ -98,7 +98,9 @@ class CornerNodeJoint(Joint):
         if self._location is None:
             points = []
             for beam_a, beam_b in combinations(self.elements, 2):
-                point_a, point_b = intersection_line_line(beam_a.centerline, beam_b.centerline)
+                point_a, point_b = intersection_line_line(
+                    beam_a.centerline, beam_b.centerline
+                )
                 if point_a is not None:
                     points.extend([point_a, point_b])
             self._location = Point(*centroid_points(points))
@@ -123,8 +125,12 @@ class CornerNodeJoint(Joint):
 
     def add_extensions(self) -> None:
         """The post reaches above both edges; each edge reaches through the post, for its step to be cut from."""
-        post_ends = [self.post.extension_to_plane(self.top_of(edge)) for edge in self.edges]
-        self.post.add_blank_extension(max(s for s, _ in post_ends), max(e for _, e in post_ends), self.guid)
+        post_ends = [
+            self.post.extension_to_plane(self.top_of(edge)) for edge in self.edges
+        ]
+        self.post.add_blank_extension(
+            max(s for s, _ in post_ends), max(e for _, e in post_ends), self.guid
+        )
         for edge in self.edges:
             post_side = self.post.ref_sides.index(self.side_facing(self.post, edge))
             far_face = self.post.opp_side(post_side)
@@ -135,12 +141,17 @@ class CornerNodeJoint(Joint):
         self.features = []
         for role, edge in zip(("edge_a", "edge_b"), self.edges):
             post_face = self.side_facing(self.post, edge)
-            post_side = self.post.ref_sides.index(post_face)  # the notch is given by its index
+            post_side = self.post.ref_sides.index(
+                post_face
+            )  # the notch is given by its index
             edge_side = self.side_against(edge, post_face.normal)
             _, edge_height = edge.get_dimensions_relative_to_side(edge_side)
             debug.show(post_face, f"post face for {role}")
 
-            step = StepJoint.from_plane_and_beam(post_face, edge, step_depth=self.step_depth, ref_side_index=edge_side)
+            depth = 7.6  # 0.0..10.0
+            step = StepJoint.from_plane_and_beam(
+                post_face, edge, step_depth=depth, ref_side_index=edge_side
+            )
             notch = StepJointNotch.from_plane_and_beam(  # across the post's whole face
                 edge.ref_sides[edge_side],
                 self.post,
