@@ -24,9 +24,11 @@ Open `joinery.gh` (Rhino units: **millimetres**). The canvas reads left to right
    is computed until you press `compute`, so picking junctions stays instant;
    until you press it, the last path stays, grey.
    `blank` (mm) mills a piece that long instead of the whole beam: the part around the
-   junction, cropped at the table's origin, towards the robot, and its end nearest the junction
+   junction, cropped at the table's origin (on the right, seen from behind the robot), and its end nearest the junction
    pointing away from it (the beam turned end for end if need be). The parts that are cut away are drawn in `offcut`. The toolpaths don't change,
    only where the beam sits.
+   `turn` (0 to 270 degrees) turns the tool about the bit: the same cut with the arm in another pose.
+   Pick one that keeps the spindle clear of the arm.
 
 `corner_node.py` is a worked example: the joint for the four corners.
 `hello_joint.gh` is the same round trip without the design or the robot: ten L corners, each turned
@@ -71,6 +73,6 @@ so open the repo root as the VS Code folder.
   Everything else is listed as "no toolpath yet". Inside corners stay round (3 mm),
   and an undercut is left standing, the note says so.
   `../processing_lab` is a small web page to try them out on a beam, with the robot.
-- Without a `blank`, the whole beam goes on the table, and what is more than ~500 mm along it is out of reach.
+- Without a `blank`, the whole beam goes on the table, and what is more than ~1400 mm along it is out of reach.
 - One setup per beam: processings on another side are listed, not solved.
 - Junction numbers follow the design. Change the design a lot, and check the `assign` lines.

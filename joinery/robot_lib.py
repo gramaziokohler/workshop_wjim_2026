@@ -45,7 +45,8 @@ HOME = [0.0, 0.0, 0.0, 0.0, math.pi / 2, 0.0]
 
 # The cell stands next to the design (y = -3000) rather than inside it, the robot on a 500 mm pedestal.
 ROBOT_FRAME = Frame(Point(0, -3000, 500), Vector(1, 0, 0), Vector(0, 1, 0))
-TABLE_FRAME = Frame(Point(300, -3000, 400), Vector(1, 0, 0), Vector(0, 1, 0))
+# The beam lies across the front of the robot: seen from behind it, from right (the origin) to left.
+TABLE_FRAME = Frame(Point(800, -3500, 400), Vector(0, 1, 0), Vector(-1, 0, 0))
 
 MM_PER_M = 1000.0
 BLANK_MARGIN = 50.0  # mm of the beam left before what's milled, where the blank is cut
@@ -95,8 +96,9 @@ class MillingCell:
     robot_frame : Frame
         Where the robot's base sits.
     table_frame : Frame
-        Where the beam's reference corner goes: the beam runs along its X, the
-        machined side faces up along its Z.
+        The table's surface, and where on it the beam goes: the beam stands on it,
+        the machined side's reference corner straight above its origin, runs along
+        its X, and the machined side faces up along its Z.
     """
 
     def __init__(self, robot_frame=None, table_frame=None):
@@ -105,7 +107,7 @@ class MillingCell:
 
     @classmethod
     def from_measured_points(cls, a, b, c, robot_frame=None):
-        """The cell with its table where the robot measured it, three points in the robot's base frame (mm).
+        """The cell with its table where the robot measured it, three points on its surface, in the robot's base frame (mm).
 
         `a` is the origin, `b` a point along X from it, `c` a point towards Y.
         """
@@ -124,21 +126,26 @@ class MillingCell:
         """The spindle (a compas_robots ToolModel, metres)."""
         return _robot().tool
 
-    def placement(self, beam, ref_side_index):
-        """The transformation that clamps `beam` with side `ref_side_index` up and that side's reference corner on the table frame."""
-        return Transformation.from_frame_to_frame(beam.ref_sides[ref_side_index], self.table_frame)
+    def placement(self, beam, ref_side_index, corner=None):
+        """The transformation that stands `beam` on the table with side `ref_side_index` up and that side's reference corner
+        (or `corner`, another frame on that side) straight above the table's origin."""
+        side = beam.ref_sides[ref_side_index]
+        # the blank's own depth under this side: beam.get_dimensions_relative_to_side is wrong for the ends (sides 4 and 5)
+        height = -min(side.to_local_coordinates(p)[2] for p in beam.blank.points)
+        table = self.table_frame
+        return Transformation.from_frame_to_frame(corner or side, Frame(table.point + table.zaxis * height, table.xaxis, table.yaxis))
 
     def setup(self, beam, toolpaths, side_index=None, blank_length=None, near=None):
-        """Clamp `beam` with side `side_index` up, on the table frame.
+        """Clamp `beam` with side `side_index` up, standing on the table.
 
         Without a `side_index`, the side the first milled toolpath comes from goes up.
 
-        Without a `blank_length`, the whole beam goes on the table, that side's reference corner on its origin.
+        Without a `blank_length`, the whole beam goes on the table, that side's reference corner above its origin.
         With one, only a blank that long is milled: the part of the beam around what's milled from every side (and `near`,
         a point such as the junction's location, so there is a blank before there are toolpaths). The blank
         starts `BLANK_MARGIN` before it, from the beam end it is closer to, and keeps that end if it reaches it.
         The other end, where it is cropped, goes on the table's origin, the beam turned end for end if need be, so the
-        crop is always at the same place, towards the robot, and what's milled faces away from it; the rest of the beam is cut away.
+        crop is always at the same place, and what's milled is towards the other end; the rest of the beam is cut away.
 
         Returns
         -------
@@ -181,7 +188,7 @@ class MillingCell:
             on_origin = Frame(side.point + side.xaxis * start, side.xaxis, side.yaxis)
         else:
             on_origin = Frame(side.point + side.xaxis * end + side.yaxis * width, -side.xaxis, -side.yaxis)
-        placement = Transformation.from_frame_to_frame(on_origin, self.table_frame)
+        placement = self.placement(beam, side_index, on_origin)
         cuts = []
         if start > 1e-6:
             cuts.append(Plane(side.point + side.xaxis * start, -side.xaxis).transformed(placement))
@@ -263,16 +270,18 @@ class MillingCell:
             return []
 
     def program(self, tool_frames, configurations):
-        """What `robot/send.py` sends to the robot: the flange (`tool0`) frames in the robot's base frame (mm), and the first configuration (degrees).
+        """What `send_to_robot.py` sends to the robot: the bit's tip frames in the robot's base frame (mm), and the first configuration (degrees).
 
-        The flange rather than the bit's tip, so the robot runs the tool we simulated, whatever tool data the controller holds.
+        The controller runs them with its own active tool, so that has to be ours: `start_tip` is where our tool is at the first
+        configuration, and the sender compares the controller's TCP to it.
         The first move is to the solved configuration, which fixes the arm's IK branch for the linear moves after it.
         """
         if not tool_frames or len(configurations) != len(tool_frames) or any(q is None for q in configurations):
             raise ValueError("Every frame needs a solved configuration: solve the toolpath, and fix the frames out of reach first.")
         return {
             "start_joints": [math.degrees(v) for v in configurations[0]],
-            "frames": [self.robot_frame.to_local_coordinates(self.flange_frame(f)) for f in tool_frames],
+            "start_tip": self.robot_frame.to_local_coordinates(self.tool_tip(configurations[0])),
+            "frames": [self.robot_frame.to_local_coordinates(f) for f in tool_frames],
         }
 
     def configuration(self, joint_values):
@@ -301,6 +310,14 @@ class MillingCell:
         return mesh.transformed(Transformation.from_frame(self.tool0(joint_values)))
 
 
+def turned(frames, quarters):
+    """`frames` turned `quarters` times 90 degrees about their own Z: the same cut, the spindle and the arm somewhere else around the bit."""
+    quarter = Transformation.from_frame(Frame(Point(0, 0, 0), Vector(0, 1, 0), Vector(-1, 0, 0)))
+    for _ in range(int(quarters or 0) % 4):
+        frames = [Frame.from_transformation(Transformation.from_frame(f) * quarter) for f in frames]
+    return list(frames)
+
+
 def frame_along(frames, t):
     """The frame `t` of the way along the path through `frames` (0 = start, 1 = end), by distance travelled.
 
@@ -327,26 +344,34 @@ if __name__ == "__main__":
     assert halfway.point.distance_to_point(Point(50, 0, 0)) < 1e-9 and index == 1
     assert frame_along(path, 0.0)[0].point == path[0].point and frame_along(path, 1.0)[0].point == path[-1].point
 
+    # Self-check: turning a frame keeps its point and Z, and four quarters are none.
+    tilted = Frame(Point(1, 2, 3), Vector(1, 0, 1), Vector(0, 1, 0))
+    for quarters, xaxis in ((0, tilted.xaxis), (1, tilted.yaxis), (2, -tilted.xaxis), (3, -tilted.yaxis), (4, tilted.xaxis)):
+        (f,) = turned([tilted], quarters)
+        assert f.point.distance_to_point(tilted.point) < 1e-9 and f.zaxis.dot(tilted.zaxis) > 1 - 1e-9 and f.xaxis.dot(xaxis) > 1 - 1e-9, quarters
+
     # Self-check: the table frame from three measured points.
-    a, b, c = Point(300, 0, -100), Point(400, 0, -100), Point(300, 100, -100)
+    a, b, c = Point(800, -500, -100), Point(800, -400, -100), Point(700, -500, -100)
     measured = MillingCell.from_measured_points(a, b, c)
     assert measured.table_frame.point == TABLE_FRAME.point and measured.table_frame.xaxis == TABLE_FRAME.xaxis
     moved = MillingCell.from_measured_points(a, b, c, robot_frame=Frame(Point(10, 20, 0), Vector(0, 1, 0), Vector(-1, 0, 0)))
-    assert moved.table_frame.point.distance_to_point(Point(10, 320, -100)) < 1e-9
-    sloppy = MillingCell.from_measured_points(a, b, Point(305, 100, -99)).table_frame
-    assert abs(sloppy.xaxis.dot(sloppy.yaxis)) < 1e-9 and sloppy.xaxis.dot(Vector(1, 0, 0)) > 1 - 1e-9
+    assert moved.table_frame.point.distance_to_point(Point(510, 820, -100)) < 1e-9
+    sloppy = MillingCell.from_measured_points(a, b, Point(700, -495, -99)).table_frame
+    assert abs(sloppy.xaxis.dot(sloppy.yaxis)) < 1e-9 and sloppy.xaxis.dot(Vector(0, 1, 0)) > 1 - 1e-9
 
-    # Self-check: the beam's reference corner for the side that goes up lands on the table frame.
+    # Self-check: the beam stands on the table, whichever side goes up, its reference corner above the table's origin.
     from compas.geometry import Line
     from compas_timber.elements import Beam
 
     beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(1000, 0, 0)), width=80, height=160)
-    for side_index in range(4):
+    for side_index, height in enumerate((160, 80, 160, 80, 1000, 1000)):
         placement, _, _, _ = measured.setup(beam, [], side_index)
         corner = beam.ref_sides[side_index].transformed(placement)
-        assert corner.point.distance_to_point(measured.table_frame.point) < 1e-6 and corner.normal.dot(measured.table_frame.normal) > 1 - 1e-9
+        above = measured.table_frame.to_local_coordinates(corner.point)
+        assert above.distance_to_point(Point(0, 0, height)) < 1e-6 and corner.normal.dot(measured.table_frame.normal) > 1 - 1e-9, (side_index, above)
+        assert abs(min(measured.table_frame.to_local_coordinates(p.transformed(placement))[2] for p in beam.blank.points)) < 1e-6, side_index
 
-    # Self-check: a blank of a long beam is cropped on the table's origin, its end nearest the joint away from the robot,
+    # Self-check: a blank of a long beam is cropped on the table's origin, its end nearest the joint away from the origin,
     # the joint within reach and the right way round, and every cut facing away from it.
     long_beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(3000, 0, 0)), width=80, height=120)
     top = long_beam.ref_sides[0]
@@ -359,7 +384,7 @@ if __name__ == "__main__":
         assert (blank.start == 0.0 or blank.end == 3000.0) == kept_end, (x, blank.note)
         assert any(abs(measured.table_frame.to_local_coordinates(cut.point)[0]) < 1e-6 for cut in blank.cuts), (x, blank.note)
         assert kept_end or abs(max(p[0] for p in on_table) - (600 - BLANK_MARGIN)) < 1e-6, (x, on_table)
-        assert all(0 <= p[0] <= 600 and abs(p[1] - (20 if x > 1500 else 60)) < 1e-6 and abs(p[2] + 10) < 1e-6 for p in on_table), (x, on_table)
+        assert all(0 <= p[0] <= 600 and abs(p[1] - (20 if x > 1500 else 60)) < 1e-6 and abs(p[2] - 110) < 1e-6 for p in on_table), (x, on_table)
         assert all((f.point - cut.point).dot(cut.normal) < 0 for f in frames for cut in blank.cuts)
         assert None not in measured.solve(frames), x
 
@@ -390,9 +415,10 @@ if __name__ == "__main__":
         )
         assert cell.flange_frame(tip).point.distance_to_point(cell.tool0(solution).point) < 1e-3, (q, solution)
         solved += 1
-        # ...and the program sends the flange there, in the robot's base frame.
+        # ...and the program sends the tip there, in the robot's base frame, and says the controller's TCP should be there too.
         program = cell.program([tip], [solution])
-        flange = cell.robot_frame.to_world_coordinates(program["frames"][0])
-        assert flange.point.distance_to_point(cell.tool0(solution).point) < 1e-3
+        for sent in (program["frames"][0], program["start_tip"]):
+            sent = cell.robot_frame.to_world_coordinates(sent)
+            assert sent.point.distance_to_point(tip.point) < 1e-3 and sent.xaxis.dot(tip.xaxis) > 1 - 1e-6 and sent.zaxis.dot(tip.zaxis) > 1 - 1e-6
     assert solved > 50, solved
     print(f"IK puts the bit's tip on the target ({solved} of 100 random poses collision-free).")

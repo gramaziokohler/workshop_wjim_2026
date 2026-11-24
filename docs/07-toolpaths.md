@@ -11,7 +11,7 @@ Group **8** · one beam of the selected junction, clamped on the table, milled b
   <div class="flow-box flow-yellow"><span class="flow-n">4</span><b><code>t</code></b><span>scrub 0 → 1, the robot follows</span></div>
   <div class="flow-box"><span class="flow-n">5</span><b><code>unreachable</code></b><span>empty? good. Not? change side</span></div>
 </div>
-<p class="flow-caption">6 mm bit · one side per setup · the beam's reference corner sits where Calibration says</p>
+<p class="flow-caption">6 mm bit · one side per setup · the beam stands where Calibration says</p>
 
 ![Group 8 in Grasshopper: Toolpaths, Robot and Calibration](assets/shots/gh_fabrication.png)
 
@@ -20,6 +20,7 @@ Group **8** · one beam of the selected junction, clamped on the table, milled b
 | `beam` | 0, 1, 2 … a beam of the junction |
 | `side` | which reference side faces up · empty: the first setup |
 | `stepdown` | depth per pass (mm) |
+| `turn` | 0°, 90°, 180° or 270°: turns the tool about the bit · same cut, other arm pose |
 | `compute` | **press it** · nothing heavy runs before |
 | `t` | scrub the robot along the path |
 
@@ -41,13 +42,15 @@ not milled:
 
 Set `side` to the next setup's side to see it on the table, and run each setup as its own program.
 Between setups, push the beam's reference corner back against the stop at the table's origin.
-With a `blank`, every setup mills the same blank, its cropped end against the stop and what's milled away from the robot.
+With a `blank`, every setup mills the same blank, its cropped end against the stop and what's milled towards the other end.
 
 ## Before the real robot
 
 !!! warning "Calibration"
     Measure **A** (origin), **B** (along X), **C** (towards Y) on the table with the robot, type them into `calibration`.
+    The beam lies across the front of the robot. Seen from behind it, X runs from right to left and Y towards the robot.
+    On the table's surface, not on the beam: the beam's height is added for you.
     The angle shown should be close to 90°.
 
 !!! warning "Unreachable"
-    `Robot` lists frames it can't reach. Fix them first: another `side`, or another beam position.
+    `Robot` lists frames it can't reach. Fix them first: another `side`, another `turn`, or another beam position.
