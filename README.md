@@ -7,6 +7,8 @@
 Design a timber structure. Pick the place where three beams meet.
 Write the joint for it in code. Mill it with a robot.
 
+[Slides](https://docs.google.com/presentation/d/14CyE4a5VKYwaq2KSOc8zTqV_KtUEoWpNZnO6R036oT8/edit?usp=sharing)
+
 - `00_install.ghx`: open once in Rhino 8 to build the `wjim_ncyu2026` environment.
 - `joint-editor-0.1.0.vsix`: the joint editor, for VS Code (`code --install-extension joint-editor-0.1.0.vsix --force`).
   Built from the `joint_editor` repo: `npm ci && npm run package` in its `extension/`, then copy the `.vsix` here.
