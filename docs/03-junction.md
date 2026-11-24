@@ -37,3 +37,9 @@ Group **5** · **Export Junction**:
 
 !!! tip "Export again any time"
     The `.fixture.json` follows the design. Your `.py` is never overwritten.
+
+??? failure "Something's off?"
+    | Symptom | Fix |
+    |---|---|
+    | The export stops: "`corner_node` is already a junction of `edge_a`, `edge_b`, `post`…" | The name belongs to another kind of junction. Give this one its own `name`. |
+    | The editor shows no beams, and an error like `IndexError: tuple index out of range` | The `.fixture.json` holds another junction's beams: compare its `role_bindings` with your joint's arguments. If they differ, delete the `.fixture.json`, select the right junction, export again under the same name. Your `.py` stays; `params` you set in the fixture have to be set again. |

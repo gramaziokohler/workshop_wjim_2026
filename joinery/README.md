@@ -13,7 +13,8 @@ Open `joinery.gh` (Rhino units: **millimetres**). The canvas reads left to right
 3. **Joint rules**: the ordinary joints, by category and by topology.
 4. **Junctions**: every place where 3+ beams meet, labelled in the viewport. Pick one.
 5. **To the joint editor**: give it a name, press `export`. Two files appear next to `joinery.gh`:
-   - `<name>.fixture.json`: the junction's beams, cropped and centred. Rewritten on every export.
+   - `<name>.fixture.json`: the junction's beams, cropped and centred. Rewritten on every export,
+     unless the name already belongs to a junction with other roles: then the export stops.
    - `<name>.py`: a joint module to start from. Written once, then it's yours.
 6. **Back from the joint editor**: a line `<junction>: <name>` puts your joint in the design.
    Saving the module in VS Code updates Grasshopper. One module can serve several junctions.

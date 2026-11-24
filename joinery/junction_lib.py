@@ -169,8 +169,10 @@ def export_junction(folder, name, junction, reach=600.0):
 
     The Fixture is always rewritten, since it comes from the design: change the
     design, export again, and the editor runs against the new situation (any
-    `params` you set in the old Fixture are kept). The module is never
-    overwritten - from the moment it exists, it is your code.
+    `params` you set in the old Fixture are kept). Only for the same roles,
+    though: other roles mean another junction, whose beams the module can't
+    use. The module is never overwritten - from the moment it exists, it is
+    your code.
 
     Returns
     -------
@@ -184,7 +186,9 @@ def export_junction(folder, name, junction, reach=600.0):
     params = dict(DEFAULT_PARAMS)
     if os.path.exists(fixture_path):
         with open(fixture_path) as f:
-            params.update(json.load(f).get("params", {}))
+            existing = json.load(f)
+        _check_same_roles(name, existing.get("role_bindings", {}), junction.roles)
+        params.update(existing.get("params", {}))
     with open(fixture_path, "w") as f:
         f.write(_to_json(junction_fixture(junction, reach, params)) + "\n")
 
@@ -207,6 +211,16 @@ def _check_name(name):
     if name in sys.builtin_module_names or name in RESERVED_NAMES:
         raise ValueError(
             f"'{name}' is already the name of a module Python knows. Pick another."
+        )
+
+
+def _check_same_roles(name, existing_roles, roles):
+    if existing_roles and set(existing_roles) != set(roles):
+        raise ValueError(
+            "'{0}' is already a junction of {1}, and this one is {2}. Export it under another name, "
+            "or delete {0}{3} if you meant to replace it.".format(
+                name, ", ".join(existing_roles), ", ".join(roles), FIXTURE_SUFFIX
+            )
         )
 
 
