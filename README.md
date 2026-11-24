@@ -2,7 +2,7 @@
 
 # With Joints in Mind
 
-23–27.11.2026 · NCYU
+23–27.11.2026 · NYCU
 
 Design a timber structure. Pick the place where three beams meet.
 Write the joint for it in code. Mill it with a robot.
