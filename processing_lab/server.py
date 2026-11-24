@@ -1,6 +1,22 @@
+# Its own environment, in uv's cache: a .venv in the repo would be offered by VS Code as an interpreter.
+# Versions as in uv.lock, keep them in step with pyproject.toml.
+# /// script
+# requires-python = ">=3.10,<3.13"
+# dependencies = [
+#     "compas_timber==3.0.2",
+#     "compas_brep[occ]==0.4.2",
+#     "compas_fab==2.1.0",
+#     "compas_fab_native==0.1.0",
+#     "compas_robots==1.1.0",
+#     "wjim_lib",
+# ]
+#
+# [tool.uv.sources]
+# wjim_lib = { path = "../wjim_lib", editable = true }
+# ///
 """Processing lab: pick a processing, see its toolpath on a beam and the IRB2600 following it.
 
-A helper for writing toolpaths, not workshop material. The toolpaths come from
+A helper for writing toolpaths. The toolpaths come from
 `joinery/toolpath_lib.py`, the robot, its spindle and the planning from
 `joinery/robot_lib.py`: what you see here is what Grasshopper gets.
 

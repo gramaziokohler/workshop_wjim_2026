@@ -16,7 +16,8 @@ Write the joint for it in code. Mill it with a robot.
 - [`joinery/`](joinery/README.md): the Grasshopper definition, toolpaths and the milling cell.
 - [`wjim_lib/`](wjim_lib/README.md): the workshop's extension of `compas_timber`.
 - `docs/`: the tutorial site (`uv run zensical serve`).
-- `processing_lab/`: try a processing's toolpaths on a beam (`uv run processing_lab/server.py`).
+- `processing_lab/`: try a processing's toolpaths on a beam (`uv run processing_lab/server.py`, [how to start it](docs/a-processing-lab.md)).
+  It has its own environment, outside the repo, from the top of `server.py`.
 - `exercises/`: the basic exercises, plain COMPAS and COMPAS Timber.
 
-`uv sync` builds one `.venv` for the site and the processing lab (Rhino has its own, from `00_install.ghx`).
+`uv sync` builds one `.venv` for the site and `joinery/check_joint.py` (Rhino has its own, from `00_install.ghx`).

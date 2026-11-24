@@ -1,7 +1,7 @@
 [project]
 name = "workshop_wjim_2026"
 version = "0.0.0"
-description = "One environment for the tutorial site and the processing lab (not the Rhino venv, that is 00_install.ghx)."
+description = "One environment for the tutorial site and joinery/check_joint.py (not the Rhino venv, that is 00_install.ghx, nor the processing lab, that is in its server.py)."
 requires-python = ">=3.10,<3.13"
 dependencies = [
     "compas_timber==3.0.2",

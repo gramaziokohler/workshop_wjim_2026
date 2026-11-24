@@ -81,3 +81,16 @@ Write the joint for it in code. Mill it with a robot.
     [:octicons-arrow-right-24: Toolpaths](07-toolpaths.md)
 
 </div>
+
+## Appendix
+
+<div class="grid cards" markdown>
+
+-   **Processing lab**
+
+    ---
+    Try a processing's toolpath on a beam, without Rhino.
+
+    [:octicons-arrow-right-24: Processing lab](a-processing-lab.md)
+
+</div>

@@ -28,6 +28,7 @@ nav:
   - 05 · Back to Grasshopper: 05-back.md
   - 06 · Parameterize: 06-parameterize.md
   - 07 · Toolpaths: 07-toolpaths.md
+  - Appendix · Processing lab: a-processing-lab.md
 
 markdown_extensions:
   - attr_list
