@@ -29,6 +29,9 @@ Open `joinery.gh` (Rhino units: **millimetres**). The canvas reads left to right
    only where the beam sits.
    `turn` (0 to 270 degrees) turns the tool about the bit: the same cut with the arm in another pose.
    Pick one that keeps the spindle clear of the arm.
+   `calibration` holds the real table, measured with the robot: leave it as it is.
+9. **Save the program** (group 10): type a name, press `save`, hand over `<name>.program.json`.
+   It holds one beam, its processings and its toolpaths, all its setups.
 
 `corner_node.py` is a worked example: the joint for the four corners.
 `hello_joint.gh` is the same round trip without the design or the robot: ten L corners, each turned
