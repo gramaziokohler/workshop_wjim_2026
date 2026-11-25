@@ -34,7 +34,6 @@ TCP_TOLERANCE = 1.0  # mm
 TCP_ANGLE_TOLERANCE = 0.5  # degrees
 AHEAD = 3.0  # seconds of moves sent ahead of the robot: enough that it never waits between short ones, few enough to stop soon
 MIN_AHEAD = 3  # moves, however long they take: it needs the next ones to round a corner
-STALL = 60.0  # seconds past the time its moves should take that a stopped run waits for the robot (a running one waits on: it may be paused on the pendant)
 
 
 def moves(program, speed):
@@ -46,24 +45,30 @@ def moves(program, speed):
         yield move, before.point.distance_to_point(frame.point) / speed
 
 
+def finished(future, stopped):
+    """Wait until the robot has done it: True, or False as soon as `stopped` is set.
+
+    No time limit: it may be slowed or paused on the pendant. Nor does a stop wait for it: restarting the RRC program drops its moves, unanswered.
+    """
+    while not stopped.is_set():
+        try:
+            future.result(timeout=0.2)
+            return True
+        except rrc.TimeoutException:
+            pass
+    return False
+
+
 def stream(abb, todo, stopped):
-    """Send the moves `todo`, `AHEAD` seconds of them at a time, until they are done or `stopped` is set. Returns how many were sent."""
+    """Send the moves `todo`, `AHEAD` seconds of them at a time, until they are done or `stopped` is set. Returns how many were sent, and how many of them are done."""
     todo = list(todo)
-    ahead, sent, said, give_up = deque(), 0, 0.0, None
+    ahead, sent, said = deque(), 0, 0.0
 
     def wait_for_oldest():
         """Until the robot has done it, or `stopped` is set."""
-        nonlocal said, give_up
-        while True:
-            try:
-                ahead[0][0].result(timeout=0.2)
-                break
-            except rrc.TimeoutException:
-                if stopped.is_set() and give_up is None:
-                    give_up = time.monotonic() + STALL + sum(s for _, s in ahead)
-                    return
-                if give_up is not None and time.monotonic() > give_up:
-                    raise
+        nonlocal said
+        if not finished(ahead[0][0], stopped):
+            return
         ahead.popleft()
         if time.monotonic() - said > 1.0:
             said = time.monotonic()
@@ -73,13 +78,12 @@ def stream(abb, todo, stopped):
         while len(ahead) >= MIN_AHEAD and sum(s for _, s in ahead) > AHEAD and not stopped.is_set():
             wait_for_oldest()
         if stopped.is_set():
-            print(f"Stopping: nothing more is sent, the robot finishes the {len(ahead)} moves it has.")
             break
         ahead.append((abb.send(move), seconds))
         sent += 1
-    while ahead:
+    while ahead and not stopped.is_set():
         wait_for_oldest()
-    return sent
+    return sent, sent - len(ahead)
 
 
 def watch_input(stopped):
@@ -119,7 +123,7 @@ def main():
     if "start_tip" not in program:
         sys.exit("This program holds flange frames, for tool0. Write it again: programs now hold the bit's tip.")
     from_here = program.get("from_here", False)
-    to_start = rrc.MoveToJoints(program["start_joints"], [], args.travel_speed, rrc.Zone.FINE)
+    to_start = rrc.MoveToJoints(program["start_joints"], [], args.travel_speed, rrc.Zone.FINE, feedback_level=rrc.FeedbackLevel.DONE)
     todo = list(moves(program, args.speed))
     start = "where the robot stands" if from_here else "a joint move"
     minutes = sum(seconds for _, seconds in todo) / 60
@@ -148,14 +152,18 @@ def main():
             check_joints(abb, program)  # it may have been jogged while this waited
         else:
             print("Joint move to the start.")
-            abb.send_and_wait(to_start)
+            if not finished(abb.send(to_start), stopped):
+                sys.exit("Stopped in the joint move to the start: no straight move was sent, the robot still finishes the joint move.")
             check_tool(abb, program)
-        sent = stream(abb, todo, stopped)
-        if sent < len(todo):
-            sys.exit(f"Stopped after {sent} of {len(todo)} moves. The bit may be in the wood.")
+        sent, done = stream(abb, todo, stopped)
+        if done < len(todo):
+            sys.exit(f"Stopped after {done} of {len(todo)} moves: the robot still finishes the {sent - done} it has. The bit may be in the wood.")
         print("Done.")
     except rrc.TimeoutException:
-        sys.exit("Stopped sending: the controller doesn't answer. Is it connected, and the RRC program running? It may still run the moves it has.")
+        sys.exit(
+            "Stopped sending: the controller doesn't answer. Is it connected, and the RRC program running? "
+            "It may still be finishing the moves it has, or the last run's, or be paused in them on the pendant."
+        )
     except KeyboardInterrupt:
         # A Stop sent now would queue behind the moves already sent, so it's the pendant.
         print("Aborted here, but the controller still runs the moves it has. Stop it on the pendant.")

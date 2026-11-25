@@ -130,15 +130,16 @@ if __name__ == "__main__":
 
     for step, ahead in ((1.0, 70), (500.0, 4)):  # mm a move, at 20 mm/s: short moves are sent well ahead, long ones aren't
         robot = Robot()
-        assert send_to_robot.stream(robot, send_to_robot.moves(program(step), 20.0), threading.Event()) == 400
+        assert send_to_robot.stream(robot, send_to_robot.moves(program(step), 20.0), threading.Event()) == (400, 400)
         assert [i.frame.point.x for i in robot.sent] == [step * i for i in range(400)] and robot.done == 400
         assert [i.zone for i in robot.sent] == ["z1"] * 399 + ["fine"]
         assert send_to_robot.MIN_AHEAD <= robot.most <= ahead, (step, robot.most)
     stopped = threading.Event()
     robot = Robot(stopped, stop_at=100)
-    assert send_to_robot.stream(robot, send_to_robot.moves(program(1.0), 20.0), stopped) == 100 == len(robot.sent) == robot.done
+    sent, done = send_to_robot.stream(robot, send_to_robot.moves(program(1.0), 20.0), stopped)
+    assert sent == 100 == len(robot.sent) and done == robot.done < 100  # the rest is not waited for
 
-    class Silent:  # a controller that never answers: stop is still heard
+    class Silent:  # a controller that never answers: stop is still heard, at once, and nothing is taken for done
         def send(self, instruction):
             def result(timeout=None):
                 stopped.set()
@@ -146,10 +147,11 @@ if __name__ == "__main__":
 
             return SimpleNamespace(result=result)
 
-    stopped, send_to_robot.STALL = threading.Event(), 0.1
-    try:
-        send_to_robot.stream(Silent(), send_to_robot.moves(program(1.0), 20.0), stopped)
-        raise AssertionError("a robot that went silent was taken for done")
-    except Timeout:
-        pass
+    for count in (400, 2):  # while there is more to send, and when all of it is sent
+        stopped = threading.Event()
+        sent, done = send_to_robot.stream(Silent(), send_to_robot.moves(program(1.0, count), 20.0), stopped)
+        assert done == 0 < sent <= count, (sent, done)
+    stopped = threading.Event()
+    assert not send_to_robot.finished(Silent().send(None), stopped)  # the joint move to the start
+    assert send_to_robot.finished(Robot().send(SimpleNamespace(feedback_level=1)), threading.Event())
     print("The sender waits for go, stays a few moves ahead of the robot, and stops.")

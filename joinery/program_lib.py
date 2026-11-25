@@ -36,17 +36,22 @@ def save(path, beam, toolpaths, near=None, settings=None):
 
 
 def load(path):
-    """What `save` wrote: `beam`, `features` (the processings its toolpaths are for), `toolpaths`, `near` and `settings`."""
+    """What `save` wrote: `beam`, `features` (the processings its toolpaths are for), `toolpaths`, `near` and `settings`.
+
+    A processing that is on the beam more than once is loaded once, with the toolpaths of the first that has any: it's milled once."""
     data = compas.json_load(path)
     if not isinstance(data, dict) or not {"beam", "extensions", "processings", "toolpaths"} <= set(data):
         raise ValueError("{} isn't a program. Save it with the Save Program component.".format(path))
     beam = Beam(**data["beam"])
     beam.add_blank_extension(*data["extensions"])
     processings = data["processings"]
-    beam.add_features(processings)
-    toolpaths = [Toolpath(processings[t["processing"]], t["frames"], t["side"], t["note"]) for t in data["toolpaths"]]
-    milled = {t["processing"] for t in data["toolpaths"]}
-    features = [p for i, p in enumerate(processings) if i in milled]
+    keys = [compas.json_dumps(p, minimal=True) for p in processings]
+    first = [keys.index(k) for k in keys]
+    beam.add_features([p for i, p in enumerate(processings) if first[i] == i])
+    owners = {}
+    milled = [t for t in data["toolpaths"] if owners.setdefault(first[t["processing"]], t["processing"]) == t["processing"]]
+    toolpaths = [Toolpath(processings[first[t["processing"]]], t["frames"], t["side"], t["note"]) for t in milled]
+    features = [p for i, p in enumerate(processings) if i in owners]
     return SimpleNamespace(beam=beam, features=features, toolpaths=toolpaths, near=data.get("near"), settings=data.get("settings") or {})
 
 
@@ -94,6 +99,14 @@ if __name__ == "__main__":
             partial = [t for t in made if t.processing is made[0].processing]  # a program for one processing doesn't mill the others
             save(path, beam, partial)
             assert len(load(path).features) == 1 and len(load(path).beam.features) == len(beam.features)
+        a.add_features([f.copy() for f in a.features])  # every processing twice
+        made = toolpaths(a)
+        for kept in (made, made[len(made) // 2 :]):  # toolpaths for both of them, or for the second only
+            save(path, a, kept)
+            program = load(path)
+            assert len(program.beam.features) == len(program.features) == len(a.features) // 2
+            assert [(t.ref_side_index, t.note) for t in program.toolpaths] == [(t.ref_side_index, t.note) for t in made[: len(made) // 2]]
+            assert all(any(t.processing is f for f in program.beam.features) for t in program.toolpaths)
         compas.json_dump({"frames": []}, path)
         try:
             load(path)

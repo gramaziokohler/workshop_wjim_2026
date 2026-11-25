@@ -14,8 +14,9 @@ material. What gets a toolpath today:
 - `Marking`, `Text`: lines engraved `MARK_DEPTH` deep; text in compas_timber's single-stroke font.
 - `Chamfer`: faced with the bit square to the chamfer, layer by layer, on the
   edges of the side facing up.
-- `Tenon`: in two setups, the beam flat on the table: the top half from the
-  reference side, the bottom half with the beam flipped onto it. Two `Toolpath`s.
+- `Tenon`: as many setups as the bit's reach asks for, each its own `Toolpath`. If half the beam is within it, two:
+  the top half from the reference side, the bottom half with the beam flipped onto it. If not, up to four: the face
+  of the tenon towards each side is cleared from that side. What is out of reach is left standing, and the note says so.
   A `House` is one, and the tenon nested in it is cleared around after it.
 - `JackRafterCut`, `DoubleCut`, `StepJoint`, `LongitudinalCut` (unlimited), `TriangleCut`, `RidgeValleyCut`,
   `HipValleyRafterNotch`: what they remove is cleared like a `Pocket`, from the ref side, or from the opposite
@@ -25,6 +26,8 @@ material. What gets a toolpath today:
 - `Planing`: each planed side faced, in a setup of its own.
 - `FreeContour`, `MillContour`: followed with the bit on its `tool_position` side, layer by layer;
   a closed, convex, not-through contour whose inside is removed is cleared as a pocket.
+
+A `JackRafterCut` can be sawn by hand instead: `saw_guides` swaps its toolpath for two grooves to saw along.
 
 Anything else is listed as "no toolpath yet" - that list is the honest answer to "can we mill this joint?".
 
@@ -78,7 +81,12 @@ from wjim_lib import TriangleCut
 
 BIT_DIAMETER = 6.0  # mm, the bit on site
 CLEARANCE = 5.0  # mm between the bit and a beam edge it cuts through, so it goes in and out of the wood in the air
+# What hangs above the bit: (mm above its tip, radius in mm) where each step of it starts, as in robot/milling_tool.json.
+# How far the bit sticks out decides how deep it goes next to wood that stays: measure it, and change this with the bit.
+SPINDLE = ((35.0, 25.0), (81.0, 45.0), (121.0, 88.0))
+SPINDLE_CLEARANCE = 1.0  # mm kept between the spindle and wood that stays
 MARK_DEPTH = 1.0  # mm, how deep a Marking is engraved
+GUIDE_DEPTH = 2.0  # mm, how deep a saw guide is engraved
 MILLED_CUTS = (JackRafterCut, DoubleCut, StepJoint, LongitudinalCut, TriangleCut, RidgeValleyCut, HipValleyRafterNotch)
 CHAMFER_EDGES = ("12", "23", "34", "41")  # Chamfer's edge flags, edge i joins ref sides i and i + 1
 
@@ -140,12 +148,8 @@ def toolpaths(beam, features=None, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe
             elsewhere = [name for i, name in enumerate(CHAMFER_EDGES) if getattr(processing, "chamfer_edge_" + name) and side not in (i, (i + 1) % 4)]
             note = f"chamfer facing, {len(frames)} frames" + (f"; edges {', '.join(elsewhere)} need the beam turned" if elsewhere else "")
         elif isinstance(processing, Tenon):  # a House is one
-            name, make = ("house", house_toolpath) if isinstance(processing, House) else ("tenon", tenon_toolpath)
-            for from_bottom in (False, True):
-                frames, depth = make(beam, processing, from_bottom, bit_diameter, stepdown, safe_height)
-                at = (side + 2) % 4 if from_bottom else side
-                how = f"from side {at}, the beam flipped" if from_bottom else f"from side {at}"
-                result.append(Toolpath(processing, frames, at, f"{name} {how}, {depth:.0f} mm deep, {len(frames)} frames"))
+            for at, frames, note in tenon_setups(beam, processing, bit_diameter, stepdown, safe_height):
+                result.append(Toolpath(processing, frames, at, note))
             continue
         elif isinstance(processing, MILLED_CUTS):
             for planes in cut_volumes(beam, processing):
@@ -345,6 +349,7 @@ def convex_toolpath(beam, planes, side_index, bit_diameter=BIT_DIAMETER, stepdow
     Every plane is a half-space. At each depth, the bit's centre may go where its whole
     disc is inside all of them, there and at the surface (so its shaft doesn't cut an overhang on the
     way down). A face flush with or outside a side of the beam is open: the bit runs past it by `CLEARANCE`.
+    The lines run straight across the beam, or parallel to the walls where those are at an angle to it.
 
     Returns
     -------
@@ -355,28 +360,32 @@ def convex_toolpath(beam, planes, side_index, bit_diameter=BIT_DIAMETER, stepdow
     """
     radius = bit_diameter / 2.0
     stepover = bit_diameter * 0.6
-    side = beam.ref_sides[side_index]
+    ref_side = beam.ref_sides[side_index]
+    is_open = [any(p.normal.dot(s.normal) > 1 - 1e-6 and (p.point - s.point).dot(s.normal) >= -1e-3 for s in beam.ref_sides) for p in planes]
+    # the closed walls' normals on the side, (x, y): the lines run parallel to the one that turns them the least from straight across
+    walls = [(p.normal.dot(ref_side.xaxis), p.normal.dot(ref_side.yaxis)) for p, o in zip(planes, is_open) if not o]
+    walls = [(x / math.hypot(x, y), y / math.hypot(x, y)) for x, y in walls if math.hypot(x, y) > 1e-6]
+    turn_x, turn_y = max(walls, key=lambda w: abs(w[0]), default=(1.0, 0.0))
+    if abs(turn_x) < 1e-3:  # only walls along the beam: straight across is square to them
+        turn_x, turn_y = 1.0, 0.0
+    if turn_x < 0:
+        turn_x, turn_y = -turn_x, -turn_y
+    side = Frame(ref_side.point, ref_side.xaxis * turn_x + ref_side.yaxis * turn_y, ref_side.yaxis * turn_x - ref_side.xaxis * turn_y)
     local = [Point(*side.to_local_coordinates(c)) for c in _corners(planes)]  # z out of the side, depth = -z
     if not local:
         return [], f"{name}: nothing to mill, the volume is empty"
-    beam_sides = []  # outward normal and offset of every side of the beam, in the same coordinates
-    for s in beam.ref_sides:
-        origin = Point(*side.to_local_coordinates(s.point))
-        normal = Vector(*side.to_local_coordinates(s.point + s.normal)) - origin
-        beam_sides.append((normal, normal.dot(origin)))
 
     # (a_u, a_v, a_w, b): inside where a_u*u + a_v*v <= b + a_w*depth, already offset for the bit
     constraints = []
     undercut = sloped = False
-    for plane in planes:
+    for plane, opened in zip(planes, is_open):
         a = Point(*side.to_local_coordinates(plane.point))
         normal = (Vector(*side.to_local_coordinates(plane.point + plane.normal)) - a).unitized()
         offset = normal.dot(a)
         in_plane = math.hypot(normal[0], normal[1])
-        is_open = any(normal.dot(n) > 1 - 1e-6 and offset >= o - 1e-3 for n, o in beam_sides)
-        margin = -(radius + CLEARANCE) if is_open else radius
-        undercut = undercut or (not is_open and normal[2] > 1e-6)
-        sloped = sloped or (not is_open and 1e-6 < abs(normal[2]) < 1 - 1e-6)
+        margin = -(radius + CLEARANCE) if opened else radius
+        undercut = undercut or (not opened and normal[2] > 1e-6)
+        sloped = sloped or (not opened and 1e-6 < abs(normal[2]) < 1 - 1e-6)
         constraints.append((normal[0], normal[1], normal[2], offset - margin * in_plane))
 
     def interval(u, depth):
@@ -399,7 +408,7 @@ def convex_toolpath(beam, planes, side_index, bit_diameter=BIT_DIAMETER, stepdow
 
     def frame(u, v, depth):
         point = side.point + side.xaxis * u + side.yaxis * v - side.normal * depth
-        return Frame(point, side.xaxis, Vector(*(-side.normal)).cross(side.xaxis))
+        return Frame(point, ref_side.xaxis, Vector(*(-side.normal)).cross(ref_side.xaxis))  # the lines turn, the tool doesn't
 
     frames = []
     layers = max(1, int(math.ceil(deepest / stepdown)))
@@ -453,6 +462,48 @@ def cut_volumes(beam, cut):
         raise ValueError("Only unlimited longitudinal cuts are milled for now (compas_timber can't model the limited ones either).")
     plane = cut.plane_from_params_and_beam(beam)
     return [[Plane(plane.point, -Vector(*plane.normal))]]  # the normal points into the offcut
+
+
+def saw_guides(beam, toolpaths, bit_diameter=BIT_DIAMETER, depth=GUIDE_DEPTH, safe_height=20.0):
+    """`toolpaths`, with each `JackRafterCut`'s swapped for two grooves to saw along, each its own `Toolpath`: on its ref
+    side, at its angle, and on the side next to it that is squarest to the cut, at its inclination."""
+    result = []
+    for toolpath in toolpaths:
+        cut = toolpath.processing
+        if not isinstance(cut, JackRafterCut):
+            result.append(toolpath)
+            continue
+        normal = Vector(*cut.plane_from_params_and_beam(beam).normal)
+        ref = cut.ref_side_index or 0
+        beside = min(sorted(((ref + 1) % 4, (ref + 3) % 4)), key=lambda i: round(abs(normal.dot(beam.ref_sides[i].normal)), 6))
+        for at, name in ((ref, "angle"), (beside, "inclination")):
+            frames, note = _saw_guide(beam, cut, at, bit_diameter, depth, safe_height)
+            result.append(Toolpath(cut, frames, at, f"saw guide from side {at} ({name}), {note}"))
+    return result
+
+
+def _saw_guide(beam, cut, side_index, bit_diameter, depth, safe_height):
+    """A groove in the offcut along `cut`'s line on a side, in and out of the wood in the air: its wall is the cut, the bit
+    never goes into the part that stays. Where the cut leans over the groove, only the groove's bottom edge is on it."""
+    side = beam.ref_sides[side_index]
+    plane = cut.plane_from_params_and_beam(beam)  # its normal points into the offcut
+    normal = Vector(*plane.normal).unitized()
+    nx, ny, nz = (normal.dot(axis) for axis in (side.xaxis, side.yaxis, side.normal))
+    across = math.hypot(nx, ny)
+    if across < 1e-6:
+        return [], "the cut doesn't cross this side"
+    radius = bit_diameter / 2.0
+    beside = max(nz, 0.0) * depth / across  # how far the groove's wall is from the cut's line on the side
+    reach = normal.dot(plane.point - side.point) + (radius + beside) * across  # nx * x + ny * y = reach: the bit's line
+    margin = radius + CLEARANCE
+    (x0, x1), (y0, y1) = (-margin, beam.blank_length + margin), (-margin, beam.get_dimensions_relative_to_side(side_index)[0] + margin)
+    ends = [(x, (reach - nx * x) / ny) for x in (x0, x1) if abs(ny) > 1e-9] + [((reach - ny * y) / nx, y) for y in (y0, y1) if abs(nx) > 1e-9]
+    ends = sorted(e for e in ends if x0 - 1e-6 <= e[0] <= x1 + 1e-6 and y0 - 1e-6 <= e[1] <= y1 + 1e-6)
+    if not ends or math.dist(ends[0], ends[-1]) < 1e-6:
+        return [], "the cut doesn't cross this side"
+    frames = _engrave(side, [[side.point + side.xaxis * x + side.yaxis * y for x, y in (ends[0], ends[-1])]], depth, safe_height)
+    note = f"{depth:.0f} mm deep in the offcut, {len(frames)} frames"
+    return frames, note + (f", its wall is {beside:.1f} mm past the cut's line" if beside > 0.05 else ", its wall is the cut's line")
 
 
 def _side_plane(beam, processing, point, normal):
@@ -919,6 +970,71 @@ def tenon_toolpath(beam, tenon, from_bottom=False, bit_diameter=BIT_DIAMETER, st
     return frames, deepest
 
 
+def tenon_setups(beam, tenon, bit_diameter=BIT_DIAMETER, stepdown=3.0, safe_height=20.0):
+    """The setups that mill a `Tenon` or `House` without the spindle touching wood that stays.
+
+    Two, see `tenon_toolpath`, if the bit's reach allows it. Otherwise one per side with wood to clear around the tenon: the
+    full width of the beam, from the shoulder to its end, down to the tenon's face towards that side. The wood past the tip
+    goes from the two sides between which the tenon is thinnest.
+
+    Returns
+    -------
+    list[tuple]
+        The side milled from, the frames and the note of each setup. The note says how much is LEFT STANDING where the
+        spindle would hit wood that stays before the bit is at its depth.
+    """
+    name, make = ("house", house_toolpath) if isinstance(tenon, House) else ("tenon", tenon_toolpath)
+    ref = tenon.ref_side_index
+    halves = [make(beam, tenon, from_bottom, bit_diameter, stepdown, safe_height) for from_bottom in (False, True)]
+    if max(depth for _, depth in halves) <= SPINDLE[0][0] - SPINDLE_CLEARANCE:
+        sides = ((ref, f"from side {ref}"), ((ref + 2) % 4, f"from side {(ref + 2) % 4}, the beam flipped"))
+        return [(at, frames, f"{name} {how}, {depth:.0f} mm deep, {len(frames)} frames") for (at, how), (frames, depth) in zip(sides, halves)]
+
+    radius = bit_diameter / 2.0
+    solids = [tenon] + list((tenon.subprocessings or []) if isinstance(tenon, House) else [])
+    boxes = [_tenon_box(beam, t) for t in solids]
+    side = beam.ref_sides[ref]
+    out = Vector(*side.xaxis) * boxes[0][1]
+    origin = Point(*side.point) + Vector(*side.xaxis) * boxes[0][0]
+    starts = [(shoulder - boxes[0][0]) * pointing for shoulder, pointing, _, _, _ in boxes]  # along the beam, from the first shoulder
+    tips = [start + t.height for start, t in zip(starts, solids)]
+    corners = [
+        [side.to_world_coordinates(Point(box[0], y, -d)) for y in box[2] for d in box[3]] for box in boxes
+    ]
+    past_tip = (boxes[-1][4] - boxes[0][0]) * boxes[0][1] > tips[-1] + 1e-6
+
+    def depths(at):  # of each solid's face towards side `at`, below it
+        return [min(-beam.ref_sides[at].to_local_coordinates(c)[2] for c in points) for points in corners]
+
+    def thickness(at):  # of the last solid, seen from side `at`
+        a, b = beam.ref_sides[at], beam.ref_sides[(at + 2) % 4]
+        return Vector(*(a.point - b.point)).dot(a.normal) - depths(at)[-1] - depths((at + 2) % 4)[-1]
+
+    thin = min((ref, (ref + 1) % 4), key=thickness)
+    setups = []
+    for at in [(ref + k) % 4 for k in range(4)]:
+        facing = beam.ref_sides[at]
+        cuts = list(zip(starts, tips, depths(at)))
+        if past_tip and at % 2 == thin % 2:
+            cuts.append((tips[-1], math.inf, cuts[-1][2] + thickness(at) / 2.0))
+        stays = [(0.0, 0.0)]  # (how far along the beam, how deep below this side) the wood that stays goes, seen from here
+        frames, deepest, left = [], 0.0, 0.0
+        for start, end, depth in cuts:
+            limit = min(top + above - SPINDLE_CLEARANCE for reach, top in stays for above, around in SPINDLE if start + radius - reach < around)
+            floor = min(depth, limit)
+            left = max(left, depth - floor)
+            stays.append((end if floor == depth else math.inf, floor))
+            if floor < 1e-6:
+                continue  # flush with this side
+            planes = [Plane(origin + out * start, -out), Plane(facing.point - facing.normal * floor, -facing.normal)]
+            frames += convex_toolpath(beam, planes + _beam_planes(beam), at, bit_diameter, stepdown, safe_height)[0]
+            deepest = max(deepest, floor)
+        if frames:
+            note = f"{name} from side {at}, {deepest:.0f} mm deep, {len(frames)} frames"
+            setups.append((at, frames, note + (f", LEFT STANDING: {left:.0f} mm, the bit is too short for this side" if left > 1e-6 else "")))
+    return setups
+
+
 if __name__ == "__main__":
     # Self-check: every cutting move of a through-lap stays inside the pocket.
     from compas.geometry import Line
@@ -979,6 +1095,22 @@ if __name__ == "__main__":
     assert extents == [(300 + r, 400 - r), (20 + r, 60 - r), (-25, extents[2][1])] and "UNDERCUT" not in note, (extents, note)
     extents, _ = cut_extents(Pocket(start_x=300, start_y=0, start_depth=25, length=100, width=80))
     assert extents[1] == (-r - CLEARANCE, 80 + r + CLEARANCE), extents
+    # at an angle to the beam, open at both sides, as in Group 3's pyramid: every line runs right through, parallel to the walls
+    beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(1000, 0, 0)), width=80, height=120)
+    for skew in (60.0, 86.087, 93.913, 120.0):
+        beam.features = [Pocket(start_x=300, start_y=0, start_depth=5, length=105, width=80, internal_angle=skew)]
+        (toolpath,) = toolpaths(beam)
+        side = beam.ref_sides[0]
+        cut = [side.to_local_coordinates(f.point) for f in toolpath.frames]
+        for a, b in zip(cut, cut[1:]):
+            if max(a[2], b[2]) > 1e-6:
+                continue  # travel, above the wood
+            if abs(b[1] - a[1]) > 20:
+                assert abs(abs(b[1] - a[1]) - (80 + 2 * (r + CLEARANCE))) < 1e-6 and abs(abs((b[0] - a[0]) / (b[1] - a[1])) - abs(math.tan(math.radians(skew - 90)))) < 1e-6, (skew, a, b)
+            else:  # from one line to the next, in the air
+                assert min(a[1], b[1]) > 80 + r or max(a[1], b[1]) < -r, (skew, a, b)
+        walls = [p for p, n in ((p, p.normal.dot(side.xaxis)) for p in _volume(beam, beam.features[0])) if abs(n) > 0.1]
+        assert len(walls) == 2 and all(abs(max((f.point - p.point).dot(p.normal) for f in toolpath.frames) + r) < 0.11 for p in walls), skew  # a radius off both
     extents, note = cut_extents(Pocket(start_x=300, start_y=20, start_depth=25, length=100, width=40, tilt_start_side=60))
     assert "UNDERCUT" in note, note
     extents, _ = cut_extents(Mortise(start_x=500, start_y=40, length=60, width=20, depth=40))
@@ -1025,46 +1157,49 @@ if __name__ == "__main__":
     assert chamfer_toolpath(beam, chamfer, side_index=2) == []
     print("Chamfer facing stays on the chamfer.")
 
-    # Self-check: a tenon's two setups never touch the tenon, and together clear everything else past the shoulder.
-    for tenon in (
-        Tenon(orientation=OrientationType.END, start_x=950.0, start_y=40.0, start_depth=30.0, angle=90.0, inclination=90.0, rotation=90.0, length=60.0, width=20.0, height=40.0, shape="square"),
-        Tenon(orientation=OrientationType.START, start_x=40.0, start_y=10.0, start_depth=0.0, angle=90.0, inclination=90.0, rotation=90.0, length=50.0, width=20.0, height=40.0, shape="square"),
+    # Self-check: a tenon's setups, bit and spindle, never touch wood that stays, and together clear the rest past the shoulder, or say what they leave.
+    import numpy as np
+
+    def frame_axes(f):
+        return np.array([list(f.xaxis), list(f.yaxis), list(f.normal)]), np.array(list(f.point))
+
+    square = dict(angle=90.0, inclination=90.0, rotation=90.0, shape="square")
+    for (w, h), count, leaves, tenon in (
+        ((58, 58), 2, False, Tenon(orientation=OrientationType.END, start_x=960.0, start_y=29.0, start_depth=14.0, length=30.0, width=20.0, height=40.0, **square)),  # within reach
+        ((80, 120), 4, False, Tenon(orientation=OrientationType.END, start_x=950.0, start_y=40.0, start_depth=30.0, length=60.0, width=20.0, height=40.0, **square)),  # 10 mm past its tip
+        ((80, 120), 4, False, Tenon(orientation=OrientationType.END, start_x=960.0, start_y=40.0, start_depth=30.0, length=60.0, width=20.0, height=40.0, **square)),
+        ((80, 120), 1, False, Tenon(orientation=OrientationType.START, start_x=40.0, start_y=23.0, start_depth=0.0, length=120.0, width=46.0, height=40.0, **square)),  # flush with three sides
+        ((80, 120), 1, True, Tenon(orientation=OrientationType.START, start_x=40.0, start_y=15.0, start_depth=0.0, length=120.0, width=30.0, height=40.0, **square)),  # the bit is too short
     ):
-        beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(1000, 0, 0)), width=80, height=120)
+        beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(1000, 0, 0)), width=w, height=h)
         beam.add_features(tenon)
-        top, bottom = toolpaths(beam)
-        assert (top.ref_side_index, bottom.ref_side_index) == (0, 2)
+        paths = toolpaths(beam)
+        assert len(paths) == count and any("LEFT STANDING" in t.note for t in paths) == leaves, paths
         shoulder, pointing, (y0, y1), (d0, d1), end = _tenon_box(beam, tenon)
-        side = beam.ref_sides[0]
-
-        def local(f):  # along from the shoulder, across, depth below side 0, and whether the bit hangs down from the tip
-            x, y, z = side.to_local_coordinates(f.point)
-            return (x - shoulder) * pointing, y, -z, Vector(*f.zaxis).dot(side.normal) > 0
-
-        cuts = []  # (start, end, depth, from below) of every move at depth
-        for t in (top, bottom):
-            for a, b in zip(t.frames, t.frames[1:]):
-                (sa, ya, da, up), (sb, yb, db, _) = local(a), local(b)
-                if abs(da - db) < 1e-6:
-                    cuts.append(((sa, ya), (sb, yb), da, up))
-
-        def reaches(cut, s, y, d, margin):
-            (sa, ya), (sb, yb), depth, up = cut
-            if (d < depth - margin) if up else (d > depth + margin):
-                return False
-            ab, ap = (sb - sa, yb - ya), (s - sa, y - ya)
-            k = max(0.0, min(1.0, (ap[0] * ab[0] + ap[1] * ab[1]) / ((ab[0] ** 2 + ab[1] ** 2) or 1.0)))
-            return math.hypot(s - sa - k * ab[0], y - ya - k * ab[1]) <= BIT_DIAMETER / 2 + margin
-
-        for s in [i * 2.0 for i in range(int(abs(end - shoulder) / 2) + 1)]:
-            for y in [i * 2.0 for i in range(41)]:
-                for d in [i * 2.0 for i in range(61)]:
-                    in_tenon = s <= tenon.height + 1e-6 and y0 - 1e-6 <= y <= y1 + 1e-6 and d0 - 1e-6 <= d <= d1 + 1e-6
-                    if in_tenon:
-                        assert not any(reaches(c, s, y, d, -1e-3) for c in cuts), ("cuts the tenon", s, y, d)
-                    elif s > 3.0 and not (s < 3.0 + 1e-6 or (s < 6.0 and (abs(y - y0) < 3.0 or abs(y - y1) < 3.0))):
-                        assert any(reaches(c, s, y, d, 1e-3) for c in cuts), ("left standing", s, y, d)
-    print("Tenon setups clear around the tenon, and only around it.")
+        grid = np.stack(np.meshgrid(np.arange(-40.0, abs(end - shoulder) + 1, 2.0), np.arange(1.1, w, 2.0), np.arange(1.1, h, 2.0), indexing="ij"), -1).reshape(-1, 3)
+        s, y, d = grid.T
+        stays = (s < 0) | ((s <= tenon.height) & (y > y0) & (y < y1) & (d > d0) & (d < d1))
+        axes, point = frame_axes(beam.ref_sides[0])
+        wood = np.c_[shoulder + pointing * s, y, -d] @ axes + point
+        cleared = np.zeros(len(wood), bool)
+        for t in paths:
+            axes, point = frame_axes(beam.ref_sides[t.ref_side_index])
+            local = (wood - point) @ axes.T
+            tips = [(np.array(list(f.point)) - point) @ axes.T for f in t.frames]
+            for a, b in zip(tips, tips[1:]):
+                steps = max(1, int(np.linalg.norm(b - a) / 4))
+                for k in range(steps + 1):
+                    tip = a + (b - a) * k / steps
+                    around, above = np.hypot(local[:, 0] - tip[0], local[:, 1] - tip[1]), local[:, 2] - tip[2]
+                    bit = (around < BIT_DIAMETER / 2 - 0.05) & (above > 0.05)
+                    assert not (bit & stays).any(), ("the bit cuts wood that stays", tenon, t)
+                    for start, size in SPINDLE:
+                        assert not ((around < size) & (above > start) & stays).any(), ("the spindle goes through wood that stays", tenon, t)
+                    cleared |= (around < BIT_DIAMETER / 2 + 0.5) & (above > -0.5)
+        corner = (s < 4.0) & ((np.abs(y - y0) < 4.0) | (np.abs(y - y1) < 4.0))  # rounded by the bit, in two setups
+        standing = ~cleared & ~stays & (s > 3.0) & ~corner
+        assert leaves or not standing.any(), ("left standing", (w, h), tenon.start_y, paths, grid[standing].min(0), grid[standing].max(0))
+    print("Tenon setups clear around the tenon, and the spindle stays out of what stays.")
 
     # Self-check: birds mouths, half laps, planing and contour pockets never cut outside what they remove, and reach its bottom.
     from compas.geometry import Polyline
@@ -1129,7 +1264,30 @@ if __name__ == "__main__":
             assert abs(max(d for _, _, d in cutting(beam, toolpath)) - 120.0 * (toolpath.ref_side_index in (0, 2)) - 80.0 * (toolpath.ref_side_index in (1, 3))) < 1e-6 or isinstance(cut, LongitudinalCut)
     beam, paths = offcut_toolpaths(JackRafterCut(orientation=OrientationType.END, start_x=540.0, inclination=70.0))
     assert paths[0].ref_side_index == 2, "a face leaning over the offcut is milled from the opposite side"
+    # saw guides: a straight groove on each of two sides, through both edges, never in the part that stays and touching it
+    for ref, cut in (
+        (0, JackRafterCut(orientation=OrientationType.START, start_x=40.0)),
+        (0, JackRafterCut(orientation=OrientationType.START, start_x=90.0, inclination=112.0)),
+        (2, JackRafterCut(orientation=OrientationType.END, start_x=500.0, inclination=68.0)),
+        (1, JackRafterCut(orientation=OrientationType.END, start_x=500.0, angle=60.0, inclination=70.0)),
+        (0, JackRafterCut(orientation=OrientationType.START, start_x=160.0, angle=120.0, inclination=110.0)),
+    ):
+        cut.ref_side_index = ref
+        beam, paths = offcut_toolpaths(cut)
+        guides = saw_guides(beam, paths)
+        assert [g.ref_side_index for g in guides] == [ref, {0: 1, 2: 1, 1: 0}[ref]], guides
+        plane = cut.plane_from_params_and_beam(beam)
+        for guide in guides:
+            side = beam.ref_sides[guide.ref_side_index]
+            width = beam.get_dimensions_relative_to_side(guide.ref_side_index)[0]
+            tilt = math.sqrt(1 - Vector(*plane.normal).dot(side.normal) ** 2)
+            assert abs(min((f.point - plane.point).dot(plane.normal) for f in guide.frames[1:3]) - r * tilt - max(0.0, -Vector(*plane.normal).dot(side.normal)) * GUIDE_DEPTH) < 1e-6, guide
+            (xa, ya, za), (xb, yb, zb) = (side.to_local_coordinates(f.point) for f in guide.frames[1:3])
+            assert len(guide.frames) == 4 and abs(za + GUIDE_DEPTH) < 1e-6 and abs(zb + GUIDE_DEPTH) < 1e-6
+            assert abs(min(ya, yb) + r + CLEARANCE) < 1e-6 and abs(max(ya, yb) - width - r - CLEARANCE) < 1e-6, guide
+    assert saw_guides(beam, toolpaths(beam, [])) == []
     beam, (toolpath,) = offcut_toolpaths(Slot(start_x=300.0, start_y=0.0, length=80.0, depth=50.0, thickness=10.0))
+    assert saw_guides(beam, [toolpath]) == [toolpath]
     cut = cutting(beam, toolpath)
     assert all(abs(x - 300.0) <= 5 - r + 1e-6 for x, _, _ in cut) and abs(max(d for _, _, d in cut) - 50.0) < 1e-6
     beam, (toolpath,) = offcut_toolpaths(Slot(start_x=300.0, start_y=0.0, length=80.0, depth=50.0, thickness=4.0))

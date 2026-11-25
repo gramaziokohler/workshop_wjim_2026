@@ -350,6 +350,17 @@ if __name__ == "__main__":
     assert halfway.point.distance_to_point(Point(50, 0, 0)) < 1e-9 and index == 1
     assert frame_along(path, 0.0)[0].point == path[0].point and frame_along(path, 1.0)[0].point == path[-1].point
 
+    # Self-check: the spindle that toolpaths keep clear of the wood (toolpath_lib.SPINDLE) encloses the one in milling_tool.json.
+    from toolpath_lib import BIT_DIAMETER
+    from toolpath_lib import SPINDLE
+
+    to_tip = Transformation.from_frame(_to_millimetres(_robot().tool.frame)).inverse()
+    for mesh in _robot().tool.root.visual[0].geometry.shape.meshes:
+        for key in mesh.vertices():
+            x, y, z = Point(*mesh.vertex_coordinates(key)).scaled(MM_PER_M).transformed(to_tip)
+            allowed = max([BIT_DIAMETER / 2] + [radius for above, radius in SPINDLE if -z >= above - 1e-3])
+            assert -z >= 150 or math.hypot(x, y) <= allowed + 0.5, (x, y, z)  # the motor's side, above that, is over any beam
+
     # Self-check: turning a frame keeps its point and Z, and four quarters are none.
     tilted = Frame(Point(1, 2, 3), Vector(1, 0, 1), Vector(0, 1, 0))
     for quarters, xaxis in ((0, tilted.xaxis), (1, tilted.yaxis), (2, -tilted.xaxis), (3, -tilted.yaxis), (4, tilted.xaxis)):
