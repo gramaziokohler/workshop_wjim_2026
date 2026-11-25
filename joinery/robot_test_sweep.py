@@ -1,4 +1,4 @@
-"""A slow, short move to try the real robot with, for the Sweep component of robot_test.gh.
+"""A slow, short move to try the real robot with, for the Sweep component of robot_execution.gh.
 
 From the pose the robot is in: straight up, then to the right (seen from behind the robot) at that height.
 The tool keeps its orientation. `python robot_test_sweep.py` checks itself.

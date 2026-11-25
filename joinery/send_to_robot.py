@@ -2,7 +2,7 @@
 # requires-python = ">=3.9,<3.13"
 # dependencies = ["compas_rrc==2.0.0"]
 # ///
-"""Send a program from `robot_test.gh` to the robot over COMPAS RRC.
+"""Send a program from `robot_execution.gh` to the robot over COMPAS RRC.
 
     uv run send_to_robot.py program.json                  # the robot, through the RRC driver on this machine
     uv run send_to_robot.py program.json --host 10.0.0.5  # the driver on another machine
@@ -12,12 +12,19 @@ The program (`MillingCell.program()` in robot_lib) is the bit's tip frames in th
 robot's base frame, run in `wobj0` with the controller's active tool (t_RRC_Act),
 which is never set here. Before any straight move the controller's TCP must be where
 our tool's is, or it stops: with another tool active the bit would go elsewhere.
-It runs outside Rhino: compas_rrc 2.0.0 asks for compas_fab 1.x.
+It runs outside Rhino: compas_rrc 2.0.0 asks for compas_fab 1.x. The Execute component of robot_execution.gh runs it too (sender_lib.py).
+
+Moves are sent a few seconds ahead of the robot. End of input (Ctrl+D) stops the sending: the robot finishes what it has.
+That is not an emergency stop, the pendant is.
 """
 
 import argparse
 import math
+import os
 import sys
+import threading
+import time
+from collections import deque
 
 import compas
 import compas_rrc as rrc
@@ -25,14 +32,61 @@ import compas_rrc as rrc
 JOINT_TOLERANCE = 0.5  # degrees, between the robot and the start of a program that starts where it stands
 TCP_TOLERANCE = 1.0  # mm
 TCP_ANGLE_TOLERANCE = 0.5  # degrees
+AHEAD = 3.0  # seconds of moves sent ahead of the robot: enough that it never waits between short ones, few enough to stop soon
+MIN_AHEAD = 3  # moves, however long they take: it needs the next ones to round a corner
+STALL = 60.0  # seconds past the time its moves should take that a stopped run waits for the robot (a running one waits on: it may be paused on the pendant)
 
 
 def moves(program, speed):
-    """The linear moves through every frame of `program`."""
+    """The linear moves through every frame of `program`, each with the seconds it takes."""
     frames = program["frames"]
-    for index, frame in enumerate(frames):
+    for index, (before, frame) in enumerate(zip([program["start_tip"]] + frames, frames)):
         zone = rrc.Zone.FINE if index == len(frames) - 1 else rrc.Zone.Z1
-        yield rrc.MoveToFrame(frame, speed, zone, rrc.Motion.LINEAR)
+        move = rrc.MoveToFrame(frame, speed, zone, rrc.Motion.LINEAR, feedback_level=rrc.FeedbackLevel.DONE)
+        yield move, before.point.distance_to_point(frame.point) / speed
+
+
+def stream(abb, todo, stopped):
+    """Send the moves `todo`, `AHEAD` seconds of them at a time, until they are done or `stopped` is set. Returns how many were sent."""
+    todo = list(todo)
+    ahead, sent, said, give_up = deque(), 0, 0.0, None
+
+    def wait_for_oldest():
+        """Until the robot has done it, or `stopped` is set."""
+        nonlocal said, give_up
+        while True:
+            try:
+                ahead[0][0].result(timeout=0.2)
+                break
+            except rrc.TimeoutException:
+                if stopped.is_set() and give_up is None:
+                    give_up = time.monotonic() + STALL + sum(s for _, s in ahead)
+                    return
+                if give_up is not None and time.monotonic() > give_up:
+                    raise
+        ahead.popleft()
+        if time.monotonic() - said > 1.0:
+            said = time.monotonic()
+            print(f"{sent - len(ahead)}/{len(todo)} moves")
+
+    for move, seconds in todo:
+        while len(ahead) >= MIN_AHEAD and sum(s for _, s in ahead) > AHEAD and not stopped.is_set():
+            wait_for_oldest()
+        if stopped.is_set():
+            print(f"Stopping: nothing more is sent, the robot finishes the {len(ahead)} moves it has.")
+            break
+        ahead.append((abb.send(move), seconds))
+        sent += 1
+    while ahead:
+        wait_for_oldest()
+    return sent
+
+
+def watch_input(stopped):
+    """Set `stopped` at the end of the input. Not sys.stdin: blocked on its lock, the interpreter can't exit."""
+    while os.read(0, 1024):
+        pass
+    stopped.set()
 
 
 def check_joints(abb, program):
@@ -53,7 +107,7 @@ def check_tool(abb, program):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("program", help="the .json robot_test.gh wrote")
+    parser.add_argument("program", help="the .json robot_execution.gh wrote")
     parser.add_argument("--speed", type=float, default=20.0, help="feed, mm/s (default 20)")
     parser.add_argument("--travel-speed", type=float, default=100.0, help="the joint move to the start, mm/s (default 100)")
     parser.add_argument("--host", default="localhost", help="where the RRC driver's rosbridge runs")
@@ -68,9 +122,10 @@ def main():
     to_start = rrc.MoveToJoints(program["start_joints"], [], args.travel_speed, rrc.Zone.FINE)
     todo = list(moves(program, args.speed))
     start = "where the robot stands" if from_here else "a joint move"
-    print(f"{len(todo)} frames at {args.speed} mm/s, starting from {start}, joints {[round(j, 1) for j in program['start_joints']]}")
+    minutes = sum(seconds for _, seconds in todo) / 60
+    print(f"{len(todo)} frames at {args.speed} mm/s, {minutes:.0f} min, starting from {start}, joints {[round(j, 1) for j in program['start_joints']]}")
     if args.dry_run:
-        for instruction in ([] if from_here else [to_start]) + todo[:6]:
+        for instruction in ([] if from_here else [to_start]) + [move for move, _ in todo[:6]]:
             print(instruction.msg)
         return
 
@@ -82,21 +137,28 @@ def main():
         if from_here:
             check_joints(abb, program)
             check_tool(abb, program)
-        input("Connected. Area clear, spindle as it should be? Enter to start, Ctrl+C to abort. ")
+        print("Ready. Area clear, spindle as it should be? Enter (go) to start, Ctrl+C (stop) to abort.")
+        try:
+            input()
+        except EOFError:
+            sys.exit("Aborted, nothing moved.")
+        stopped = threading.Event()
+        threading.Thread(target=watch_input, args=[stopped], daemon=True).start()
         if from_here:
             check_joints(abb, program)  # it may have been jogged while this waited
         else:
+            print("Joint move to the start.")
             abb.send_and_wait(to_start)
             check_tool(abb, program)
-        for instruction in todo[:-1]:
-            abb.send(instruction)
-        abb.send_and_wait(todo[-1])  # no timeout: it returns when the last move is done
+        sent = stream(abb, todo, stopped)
+        if sent < len(todo):
+            sys.exit(f"Stopped after {sent} of {len(todo)} moves. The bit may be in the wood.")
         print("Done.")
     except rrc.TimeoutException:
-        sys.exit("Stopped: the controller doesn't answer. Is it connected, and the RRC program running?")
+        sys.exit("Stopped sending: the controller doesn't answer. Is it connected, and the RRC program running? It may still run the moves it has.")
     except KeyboardInterrupt:
         # A Stop sent now would queue behind the moves already sent, so it's the pendant.
-        print("Aborted here, but the controller still runs what it was sent. Stop it on the pendant.")
+        print("Aborted here, but the controller still runs the moves it has. Stop it on the pendant.")
     finally:
         ros.close()
         ros.terminate()

@@ -96,9 +96,9 @@ class MillingCell:
     robot_frame : Frame
         Where the robot's base sits.
     table_frame : Frame
-        The table's surface, and where on it the beam goes: the beam stands on it,
-        the machined side's reference corner straight above its origin, runs along
-        its X, and the machined side faces up along its Z.
+        The table's surface, and where on it the beam goes: the beam stands on it, a corner on
+        its origin, runs along its X, lies on the far side of X from the robot (against its Y,
+        inside the measured L), and the machined side faces up along its Z.
     """
 
     def __init__(self, robot_frame=None, table_frame=None):
@@ -109,10 +109,13 @@ class MillingCell:
     def from_measured_points(cls, a, b, c, robot_frame=None):
         """The cell with its table where the robot measured it, three points on its surface, in the robot's base frame (mm).
 
-        `a` is the origin, `b` a point along X from it, `c` a point towards Y.
+        An L: `a` is the origin, `b` a point along the beam from it (the base's +y, the table's X),
+        `c` a point away from the robot (the base's +x, against the table's Y, so the table's Z is up).
         """
         cell = cls(robot_frame)
-        measured = Frame(a, Vector.from_start_end(a, b), Vector.from_start_end(a, c))
+        measured = Frame(a, Vector.from_start_end(a, b), Vector.from_start_end(c, a))
+        if measured.zaxis[2] <= 0:
+            raise ValueError("The table faces down, the L is mirrored: B is along +y from A, C along +x, away from the robot.")
         cell.table_frame = cell.robot_frame.to_world_coordinates(measured)
         return cell
 
@@ -127,20 +130,23 @@ class MillingCell:
         return _robot().tool
 
     def placement(self, beam, ref_side_index, corner=None):
-        """The transformation that stands `beam` on the table with side `ref_side_index` up and that side's reference corner
-        (or `corner`, another frame on that side) straight above the table's origin."""
+        """The transformation that stands `beam` on the table inside the measured L, side `ref_side_index` up: that side's reference
+        corner (or `corner`, another frame on that side) is at the table's X = 0, and the edge across from it lies along the table's X."""
         side = beam.ref_sides[ref_side_index]
         # the blank's own depth under this side: beam.get_dimensions_relative_to_side is wrong for the ends (sides 4 and 5)
-        height = -min(side.to_local_coordinates(p)[2] for p in beam.blank.points)
+        corners = [side.to_local_coordinates(p) for p in beam.blank.points]
+        height = -min(p[2] for p in corners)
+        width = max(p[1] for p in corners)
         table = self.table_frame
-        return Transformation.from_frame_to_frame(corner or side, Frame(table.point + table.zaxis * height, table.xaxis, table.yaxis))
+        origin = table.point + table.zaxis * height - table.yaxis * width
+        return Transformation.from_frame_to_frame(corner or side, Frame(origin, table.xaxis, table.yaxis))
 
     def setup(self, beam, toolpaths, side_index=None, blank_length=None, near=None):
         """Clamp `beam` with side `side_index` up, standing on the table.
 
         Without a `side_index`, the side the first milled toolpath comes from goes up.
 
-        Without a `blank_length`, the whole beam goes on the table, that side's reference corner above its origin.
+        Without a `blank_length`, the whole beam goes on the table, its start at the table's origin.
         With one, only a blank that long is milled: the part of the beam around what's milled from every side (and `near`,
         a point such as the junction's location, so there is a blank before there are toolpaths). The blank
         starts `BLANK_MARGIN` before it, from the beam end it is closer to, and keeps that end if it reaches it.
@@ -199,7 +205,7 @@ class MillingCell:
 
     def setups(self, beam, toolpaths, blank_length=None, near=None):
         """The beam clamped once for every side it is milled from, in the order of its toolpaths: between two setups
-        it is turned and clamped again, that side up and its reference corner against the table's origin.
+        it is turned and clamped again, that side up and pushed back into the corner of the L, the table's origin.
 
         Returns
         -------
@@ -351,25 +357,36 @@ if __name__ == "__main__":
         assert f.point.distance_to_point(tilted.point) < 1e-9 and f.zaxis.dot(tilted.zaxis) > 1 - 1e-9 and f.xaxis.dot(xaxis) > 1 - 1e-9, quarters
 
     # Self-check: the table frame from three measured points.
-    a, b, c = Point(800, -500, -100), Point(800, -400, -100), Point(700, -500, -100)
+    a, b, c = Point(800, -500, -100), Point(800, -400, -100), Point(900, -500, -100)
     measured = MillingCell.from_measured_points(a, b, c)
     assert measured.table_frame.point == TABLE_FRAME.point and measured.table_frame.xaxis == TABLE_FRAME.xaxis
     moved = MillingCell.from_measured_points(a, b, c, robot_frame=Frame(Point(10, 20, 0), Vector(0, 1, 0), Vector(-1, 0, 0)))
     assert moved.table_frame.point.distance_to_point(Point(510, 820, -100)) < 1e-9
-    sloppy = MillingCell.from_measured_points(a, b, Point(700, -495, -99)).table_frame
+    sloppy = MillingCell.from_measured_points(a, b, Point(900, -505, -101)).table_frame
     assert abs(sloppy.xaxis.dot(sloppy.yaxis)) < 1e-9 and sloppy.xaxis.dot(Vector(0, 1, 0)) > 1 - 1e-9
 
-    # Self-check: the beam stands on the table, whichever side goes up, its reference corner above the table's origin.
+    assert measured.table_frame.zaxis.dot(Vector(0, 0, 1)) > 1 - 1e-9
+    try:
+        MillingCell.from_measured_points(a, b, Point(700, -500, -100))  # C towards the robot: the mirrored L
+        raise AssertionError("a mirrored L is refused")
+    except ValueError:
+        pass
+
+    # Self-check: the beam stands on the table, inside the L, whichever side goes up.
     from compas.geometry import Line
     from compas_timber.elements import Beam
 
     beam = Beam.from_centerline(Line(Point(0, 0, 0), Point(1000, 0, 0)), width=80, height=160)
-    for side_index, height in enumerate((160, 80, 160, 80, 1000, 1000)):
+    for side_index, (height, width) in enumerate(((160, 80), (80, 160), (160, 80), (80, 160), (1000, 160), (1000, 160))):
         placement, _, _, _ = measured.setup(beam, [], side_index)
         corner = beam.ref_sides[side_index].transformed(placement)
         above = measured.table_frame.to_local_coordinates(corner.point)
-        assert above.distance_to_point(Point(0, 0, height)) < 1e-6 and corner.normal.dot(measured.table_frame.normal) > 1 - 1e-9, (side_index, above)
-        assert abs(min(measured.table_frame.to_local_coordinates(p.transformed(placement))[2] for p in beam.blank.points)) < 1e-6, side_index
+        assert above.distance_to_point(Point(0, -width, height)) < 1e-6 and corner.normal.dot(measured.table_frame.normal) > 1 - 1e-9, (side_index, above)
+        points = [measured.table_frame.to_local_coordinates(p.transformed(placement)) for p in beam.blank.points]
+        low, high = [[pick(p[i] for p in points) for i in range(3)] for pick in (min, max)]
+        assert abs(low[0]) < 1e-6 and abs(high[1]) < 1e-6 and abs(low[2]) < 1e-6, (side_index, low, high)
+        in_base = [measured.robot_frame.to_local_coordinates(p.transformed(placement)) for p in beam.blank.points]
+        assert min(p[0] for p in in_base) > a[0] - 1e-6 and min(p[1] for p in in_base) > a[1] - 1e-6, side_index  # beyond A in +x and +y
 
     # Self-check: a blank of a long beam is cropped on the table's origin, its end nearest the joint away from the origin,
     # the joint within reach and the right way round, and every cut facing away from it.
@@ -384,7 +401,7 @@ if __name__ == "__main__":
         assert (blank.start == 0.0 or blank.end == 3000.0) == kept_end, (x, blank.note)
         assert any(abs(measured.table_frame.to_local_coordinates(cut.point)[0]) < 1e-6 for cut in blank.cuts), (x, blank.note)
         assert kept_end or abs(max(p[0] for p in on_table) - (600 - BLANK_MARGIN)) < 1e-6, (x, on_table)
-        assert all(0 <= p[0] <= 600 and abs(p[1] - (20 if x > 1500 else 60)) < 1e-6 and abs(p[2] - 110) < 1e-6 for p in on_table), (x, on_table)
+        assert all(0 <= p[0] <= 600 and abs(p[1] - (-60 if x > 1500 else -20)) < 1e-6 and abs(p[2] - 110) < 1e-6 for p in on_table), (x, on_table)
         assert all((f.point - cut.point).dot(cut.normal) < 0 for f in frames for cut in blank.cuts)
         assert None not in measured.solve(frames), x
 

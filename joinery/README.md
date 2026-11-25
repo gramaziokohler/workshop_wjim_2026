@@ -50,6 +50,9 @@ into your agent's skills folder, e.g. `.claude/skills/`).
 | `check_joint.py` | runs a joint module against its Fixture outside VS Code and Rhino, with its toolpaths (`uv run python joinery/check_joint.py joinery/corner_node.py`) |
 | `toolpath_lib.py` | toolpaths from BTLx processings (`python toolpath_lib.py` checks itself) |
 | `robot_lib.py` | the milling cell and the robot's inverse kinematics (`python robot_lib.py` checks itself) |
+| `program_lib.py` | a beam, its processings and toolpaths as a `<name>.program.json`, from a design to the fabrication document (`python program_lib.py` checks itself) |
+| `sender_lib.py` | runs `send_to_robot.py` beside Grasshopper, for Execute in `robot_execution.gh` (`python sender_lib.py` checks itself) |
+| `fabrication_update.gh` | groups 8 to 10 for a `joinery.gh` someone already works in, see `fabrication_update.md` |
 | `robot/` | the ABB IRB2600-12/1.65 model |
 
 ## Setup
