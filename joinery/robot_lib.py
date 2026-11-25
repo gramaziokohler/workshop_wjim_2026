@@ -186,7 +186,7 @@ class MillingCell:
             start = 0.0 if first - BLANK_MARGIN < stub else first - BLANK_MARGIN
             end = min(full, start + blank_length)
         note = "blank {:.0f} mm, from {:.0f} to {:.0f} along the beam".format(end - start, start, end)
-        if first - start < -1e-6 or last - end > 1e-6:
+        if (start > 1e-6 and first < start - 1e-6) or (end < full - 1e-6 and last > end + 1e-6):  # past the beam's own ends is air
             note += ", TOO SHORT: what's milled runs from {:.0f} to {:.0f}".format(first, last)
 
         width = beam.get_dimensions_relative_to_side(side_index)[0]
@@ -415,6 +415,11 @@ if __name__ == "__main__":
         assert all(0 <= p[0] <= 600 and abs(p[1] - (-60 if x > 1500 else -20)) < 1e-6 and abs(p[2] - 110) < 1e-6 for p in on_table), (x, on_table)
         assert all((f.point - cut.point).dot(cut.normal) < 0 for f in frames for cut in blank.cuts)
         assert None not in measured.solve(frames), x
+
+    # Self-check: a blank is too short for what's milled past its cropped end, not for a bit that runs past the beam's own ends.
+    for xs, too_short in (((-3.0, 500.0), False), ((2500.0, 3003.0), False), ((-3.0, 700.0), True), ((2300.0, 3003.0), True)):
+        toolpath = SimpleNamespace(frames=[Frame(top.point + top.xaxis * x, top.xaxis, -top.yaxis) for x in xs], ref_side_index=0)
+        assert ("TOO SHORT" in measured.setup(long_beam, [toolpath], blank_length=600)[3].note) == too_short, xs
 
     # Self-check: milled from two sides, the beam is clamped twice, and both setups mill the same blank the same way round.
     bottom = long_beam.ref_sides[2]
