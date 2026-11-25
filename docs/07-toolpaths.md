@@ -41,14 +41,14 @@ not milled:
 ```
 
 Set `side` to the next setup's side to see it on the table, and run each setup as its own program.
-Between setups, push the beam's reference corner back against the stop at the table's origin.
+Between setups, push the beam back into the corner of the L, at **A**.
 With a `blank`, every setup mills the same blank, its cropped end against the stop and what's milled towards the other end.
 
 ## Before the real robot
 
 !!! warning "Calibration"
-    Measure **A** (origin), **B** (along X), **C** (towards Y) on the table with the robot, type them into `calibration`.
-    The beam lies across the front of the robot. Seen from behind it, X runs from right to left and Y towards the robot.
+    Measure **A** (origin), **B** (along the beam, the base's +y), **C** (away from the robot, the base's +x) on the table with the robot, type them into `calibration`.
+    The L opens away from the robot: seen from behind it, A to B runs from right to left, A to C away from it. The beam lies inside the L, its corner at A, along A to B.
     On the table's surface, not on the beam: the beam's height is added for you.
     The angle shown should be close to 90°.
 
