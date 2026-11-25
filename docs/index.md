@@ -100,4 +100,11 @@ Write the joint for it in code. Mill it with a robot.
 
     [:octicons-arrow-right-24: Processings](b-processings.md)
 
+-   **Calibration**
+
+    ---
+    How the robot knows where the table is.
+
+    [:octicons-arrow-right-24: Calibration](c-calibration.md)
+
 </div>

@@ -30,6 +30,7 @@ nav:
   - 07 · Toolpaths: 07-toolpaths.md
   - Appendix · Processing lab: a-processing-lab.md
   - Appendix · Processings: b-processings.md
+  - Appendix · Calibration: c-calibration.md
 
 markdown_extensions:
   - attr_list

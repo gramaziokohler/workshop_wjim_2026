@@ -50,7 +50,7 @@ With a `blank`, every setup mills the same blank, its cropped end against the st
     Measure **A** (origin), **B** (along the beam, the base's +y), **C** (away from the robot, the base's +x) on the table with the robot, type them into `calibration`.
     The L opens away from the robot: seen from behind it, A to B runs from right to left, A to C away from it. The beam lies inside the L, its corner at A, along A to B.
     On the table's surface, not on the beam: the beam's height is added for you.
-    The angle shown should be close to 90°.
+    The angle shown should be close to 90°. [How it works](c-calibration.md)
 
 !!! warning "Unreachable"
     `Robot` lists frames it can't reach. Fix them first: another `side`, another `turn`, or another beam position.
